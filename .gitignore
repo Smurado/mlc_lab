@@ -24,6 +24,13 @@ Thumbs.db
 # IDEs
 .vscode/
 
+# Build artifacts and executables
+*.o
+*.out
+test_run
+test_run_debug
+*test_run*
+
 # Data and Models
 *.csv
 *.dat
