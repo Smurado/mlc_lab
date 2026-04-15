@@ -27,9 +27,14 @@ Thumbs.db
 # Build artifacts and executables
 *.o
 *.out
+*.exe
+main
 test_run
 test_run_debug
 *test_run*
+
+# macOS Debug Symbols
+*.dSYM/
 
 # Data and Models
 *.csv
