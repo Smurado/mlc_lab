@@ -9,7 +9,39 @@ Zum Schluss sollte der GNU Project Debugger (GDB) verwendet werden, um durch die
 
 2. Implementation
 ------------------
+Die Funktionen ``inner_product`` und ``outer_product`` wurden in AArch64-Assembly umgesetzt. 
+Die Übergabe der Parameter erfolgt über Register (z.B. ``x0``, ``x1``, ``w2``).
 
+**Inner Product**
+
+Berechnet das Skalarprodukt zweier Arrays.
+
+- Schleife über alle Elemente
+- Multiplikation der Werte
+- Aufsummieren der Ergebnisse
+- Rückgabe der Summe
+
+Pseudocode::
+
+    sum = 0
+    for i in range(size):
+        sum += a[i] * b[i]
+    return sum
+
+
+**Outer Product**
+
+Berechnet das äußere Produkt zweier Arrays.
+
+- Zwei Schleifen (für beide Arrays)
+- Jedes Element aus ``a`` wird mit jedem aus ``b`` multipliziert
+- Ergebnis wird im Array ``c`` gespeichert
+
+Pseudocode::
+
+    for i in range(size):
+        for j in range(size):
+            c[i * size + j] = a[i] * b[j]
 
 3. Unit Tests mit Catch2
 -------------------------
