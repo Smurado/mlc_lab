@@ -6,4 +6,5 @@ Team Contributions
 * Entwicklung der entsprechenden Unit-Tests für das Outer Product in der `main.cpp`.
 
 **Teammitglied 2:**
-* Beschreibung des Beitrags...
+* Implementierung der `inner_product` Funktion in Assembly (`functions.s`).
+* Entwicklung der entsprechenden Unit-Tests für das Inner Product in der `main.cpp`.
