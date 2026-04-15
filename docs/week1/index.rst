@@ -9,10 +9,7 @@ Zum Schluss sollte der GNU Project Debugger (GDB) verwendet werden, um durch die
 
 2. Implementation
 ------------------
-Die Lösung der Aufgaben erfolgte in reiner AArch64-Assembly. Dabei haben wir uns strikt an den *ARM Architecture Procedure Call Standard (AAPCS)* gehalten:
 
-* **Zähler und Schleifen:** Für das `inner_product` verwenden wir eine einfache Iteration (mit Register `w4`), während das `outer_product` eine verschachtelte Iteration mit zwei Zählern (`w4` und `w5`) nutzt, bei der der Start-Pointer von Array `b` im Register `x8` als Zwischenspeicher gesichert wird.
-* **Erweitertes Datenformat:** Da die Eingabearrays C++ `uint32_t`-Werte enthalten, verwenden wir den Befehl `umull` (Unsigned Multiply Long), um bei der Multiplikation potenziellen Überläufen vorzubeugen und das Ergebnis verlustfrei in einem 64-Bit-Register (`x5` bzw. `x9`) abzulegen.
 
 3. Unit Tests mit Catch2
 -------------------------
