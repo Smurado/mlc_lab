@@ -1,9 +1,6 @@
-.. MLC Lab Report documentation master file
-
-Welcome to the MLC Lab Project Report!
 ======================================
 
-Dieses Dokument enthält den Projektbericht für das MLC Lab, inklusive aller notwendigen Dokumentationen und Beiträge der Teammitglieder.
+Dieses Dokument enthält den Projektbericht für das MLC Lab, inklusive aller notwendigen Dokumentationen und Beiträge der Teammitglieder: Julian und Justin.
 
 .. toctree::
    :maxdepth: 2

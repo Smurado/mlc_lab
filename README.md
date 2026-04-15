@@ -4,7 +4,7 @@
 - Das Datum in Dateinamen muss immer im Format **YYYY.MM.DD** angegeben werden.
 - Die **Nachnamen der Teammitglieder** müssen ebenfalls im Dateinamen enthalten sein.
 
-## Week 1: Debugging Report (inner_product)
+## Week 1: Debugging Report (inner_product | outer_product)
 
 Die Aufgabe verlangte das Debuggen eines Aufrufs der `inner_product` Funktion mit dem GNU Debugger (GDB). Da wir auf Apple Silicon (AArch64) arbeiten, wurde das Äquivalent **LLDB** genutzt. 
 
