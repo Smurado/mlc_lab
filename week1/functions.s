@@ -1,6 +1,7 @@
-.global _outer_product, _inner_product
+.global _outer_product, _inner_product, outer_product, inner_product
 
 _inner_product:
+inner_product:
     mov x8, #0                  // Summe initialisieren
     mov w4, #0                  // Zaehler initialisieren
 
@@ -22,6 +23,7 @@ loop_end:
     ret                         // Zum Aufrufer zurueckkehren
 
 _outer_product:
+outer_product:
     mov x8, x1                  // Zeiger auf i_b sichern
     mov w4, #0                  // Initiiere l_i = 0
 outerloop:
