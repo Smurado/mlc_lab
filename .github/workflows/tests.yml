@@ -14,17 +14,17 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Install Compiler (g++)
+    - name: Install Cross-Compiler and QEMU
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential
+        sudo apt-get install -y g++-aarch64-linux-gnu qemu-user
 
-    - name: Compile Tests
+    - name: Compile Tests (ARM64)
       run: |
         cd week1
-        g++ -g -Wall -Wextra -Werror main.cpp functions.s -o test_run
+        aarch64-linux-gnu-g++ -g -Wall -Wextra -Werror main.cpp functions.s -o test_run
 
-    - name: Execute Catch2 Unit Tests
+    - name: Execute Catch2 Unit Tests (via Emulator)
       run: |
         cd week1
-        ./test_run
+        qemu-aarch64 -L /usr/aarch64-linux-gnu ./test_run
