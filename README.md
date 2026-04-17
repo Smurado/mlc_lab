@@ -23,3 +23,6 @@ Um das Programm durchschreiten (step through) zu können, wurde es zunächst mit
 4. **Beobachtungen in den Registern (`register read`)**
    - **Parameter-Übergabe:** Nach einigen Schritten überprüften wir das Register `w2`, in dem laut AAPCS64 Calling Convention das dritte Argument (die Array-Größe) stehen sollte. Mit `register read w2` bekamen wir die Ausgabe `0x00000004` (4), was exakt der Variable `size = 4` aus unserem C++ Code entspricht.
    - **Akkumulation:** Durch das Auslesen des Registers `x8` (unsere finale Summe) konnten wir nach jeder inneren Schleifeniteration zusehen, wie sich das korrekte innere Produkt Stück für Stück aufbaute, bis es schließlich den erwarteten Wert `70` erreichte.
+
+## Info zu Catch2
+Für das Testing-Framework Catch2 (`catch.hpp`) haben wir einen eigenen Ordner `lib` im Hauptverzeichnis des Projekts angelegt. Darin liegt nun die Header-Datei, sodass beide Wochen-Ordner strukturiert darauf zugreifen können.

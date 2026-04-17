@@ -1,5 +1,5 @@
 #define CATCH_CONFIG_MAIN  // Weist Catch2 an, eine main-Funktion zu generieren
-#include "catch.hpp"
+#include "../lib/catch.hpp"
 #include <cstdint>
 #include <vector>
 #include <chrono>
