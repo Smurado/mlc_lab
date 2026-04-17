@@ -1,78 +1,63 @@
     .global _micro_benchmark
 _micro_benchmark:
+
+    
+
     // Stack Frame speichern
-    stp x8, x9, [sp, #-16]!
-    stp x10, x11, [sp, #-16]!
-    stp x12, x13, [sp, #-16]!
-    stp x14, x15, [sp, #-16]!
+    stp s8, s9, [sp, #-16]!
+    stp s10, s11, [sp, #-16]!
+    stp s12, s13, [sp, #-16]!
+    stp s14, s15, [sp, #-16]!
     
     .rep 50 // N = 50 * 2 * 28
 
-        fmadd x0, x29, x30, x31;
-        fmadd x1, x29, x30, x31;
-        fmadd x2, x29, x30, x31;
-        fmadd x3, x29, x30, x31;
+        fmadd s0, s29, s30, s31
+        fmadd s1, s29, s30, s31;
+        fmadd s2, s29, s30, s31;
+        fmadd s3, s29, s30, s31;
 
-        fmadd x4, x29, x30, x31;
-        fmadd x5, x29, x30, x31;
-        fmadd x6, x29, x30, x31;
-        fmadd x7, x29, x30, x31;
+        fmadd s4, s29, s30, s31;
+        fmadd s5, s29, s30, s31;
+        fmadd s6, s29, s30, s31;
+        fmadd s7, s29, s30, s31;
 
-        fmadd x8, x29, x30, x31;
-        fmadd x9, x29, x30, x31;
-        fmadd x10, x29, x30, x31;
-        fmadd x11, x29, x30, x31;
+        fmadd s8, s29, s30, s31;
+        fmadd s9, s29, s30, s31;
+        fmadd s10, s29, s30, s31;
+        fmadd s11, s29, s30, s31;
 
-        fmadd x12, x29, x30, x31;
-        fmadd x13, x29, x30, x31;
-        fmadd x14, x29, x30, x31;
-        fmadd x15, x29, x30, x31;
+        fmadd s12, s29, s30, s31;
+        fmadd s13, s29, s30, s31;
+        fmadd s14, s29, s30, s31;
+        fmadd s15, s29, s30, s31;
 
-        fmadd x16, x29, x30, x31;
-        fmadd x17, x29, x30, x31;
-        fmadd x18, x29, x30, x31;
-        fmadd x19, x29, x30, x31;
+        fmadd s16, s29, s30, s31;
+        fmadd s17, s29, s30, s31;
+        fmadd s18, s29, s30, s31;
+        fmadd s19, s29, s30, s31;
 
-        fmadd x20, x29, x30, x31;
-        fmadd x21, x29, x30, x31;
-        fmadd x22, x29, x30, x31;
-        fmadd x23, x29, x30, x31;
+        fmadd s20, s29, s30, s31;
+        fmadd s21, s29, s30, s31;
+        fmadd s22, s29, s30, s31;
+        fmadd s23, s29, s30, s31;
 
-        fmadd x24, x29, x30, x31;
-        fmadd x25, x29, x30, x31;
-        fmadd x26, x29, x30, x31;
-        fmadd x27, x29, x30, x31;
+        fmadd s24, s29, s30, s31;
+        fmadd s25, s29, s30, s31;
+        fmadd s26, s29, s30, s31;
+        fmadd s27, s29, s30, s31;
     
     .endr
     
     // Stack Frame speichern
-    ldp x8, x9, [sp, #-16]!
-    ldp x10, x11, [sp, #-16]!
-    ldp x12, x13, [sp, #-16]!
-    ldp x14, x15, [sp, #-16]!
+    ldp s8, s9, [sp, #-16]!
+    ldp s10, s11, [sp, #-16]!
+    ldp s12, s13, [sp, #-16]!
+    ldp s14, s15, [sp, #-16]!
 
     ret
 
 
     .global _perm_neon_abc_cba
 _perm_neon_abc_cba:
-    // Parameter:
-    // x0 = size_c (int64_t)
-    // x1 = abc (float const *)
-    // x2 = cba (float *)
-    
-    // Stack Frame speichern (x29 = FP, x30 = LR)
-    stp x29, x30, [sp, #-32]!
-    mov x29, sp
-    
-    // Callee-saved Register speichern (x19-x28 bei Bedarf)
-    stp x19, x20, [sp, #16]
-    
-    // Funktion hier implementieren
-    
-    // Callee-saved Register restoren
-    ldp x19, x20, [sp, #16]
-    
-    // Stack Frame restoren
-    ldp x29, x30, [sp], #32
+
     ret
