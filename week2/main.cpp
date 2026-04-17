@@ -2,12 +2,42 @@
 #include "catch.hpp"
 #include <cstdint>
 #include <vector>
+#include <chrono>
+#include <iostream>
 
 // Deklaration der Assembly-Funktionen
 extern "C" {
+    void micro_benchmark();
     void perm_neon_abc_cba( int64_t size_c, 
                             float const * abc, 
                             float       * cba);
+}
+
+TEST_CASE("Benchmark: micro_benchmark Funktion", "[micro_benchmark_bench]") {
+    const int num_iterations = 1000;
+    
+    // Warmup
+    for (int i = 0; i < 10; ++i) {
+        micro_benchmark();
+    }
+    
+    // Benchmark mit Chrono
+    auto start = std::chrono::high_resolution_clock::now();
+    micro_benchmark();
+    auto end = std::chrono::high_resolution_clock::now();
+    
+    auto duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+    auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    
+    double avg_ns = static_cast<double>(duration_ns.count()) / num_iterations;
+    
+    std::cout << "\n=== Micro Benchmark Results ===\n";
+    std::cout << "Iterations: " << num_iterations << "\n";
+    std::cout << "Total Time: " << duration_ms.count() << " ms\n";
+    std::cout << "Total Time: " << duration_us.count() << " us\n";
+    std::cout << "Average Time per Call: " << avg_ns << " ns\n";
+    std::cout << "==============================\n";
 }
 
 TEST_CASE("Einsum Permutation abc -> cba wird korrekt berechnet", "[perm_neon_abc_cba]") {
