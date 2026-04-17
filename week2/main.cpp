@@ -4,34 +4,36 @@
 #include <vector>
 #include <chrono>
 #include <iostream>
+#include <locale>
 
 // Deklaration der Assembly-Funktionen
 extern "C" {
-    void micro_benchmark();
+    void micro_benchmark(uint64_t iterations);
     void perm_neon_abc_cba( int64_t size_c, 
                             float const * abc, 
                             float       * cba);
 }
 
 TEST_CASE("Benchmark: micro_benchmark Funktion", "[micro_benchmark_bench]") {
-    const int num_iterations = 1000;
+    const uint64_t num_iterations = 100'000'000; // 100 Millionen Iterationen
     
     // Warmup
-    for (int i = 0; i < 10; ++i) {
-        micro_benchmark();
-    }
+    micro_benchmark(10);
     
     // Benchmark mit Chrono
     auto start = std::chrono::high_resolution_clock::now();
-    micro_benchmark();
+    micro_benchmark(num_iterations);
     auto end = std::chrono::high_resolution_clock::now();
     
     auto duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
     auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
     auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     
-    double avg_ns = static_cast<double>(duration_ns.count()) / num_iterations;
+    double avg_ns = static_cast<double>(duration_ns.count()) / (num_iterations * 50*2*28);
     
+    // Tausendertrennzeichen für die Ausgabe aktivieren
+    std::cout.imbue(std::locale("de_DE.UTF-8"));
+
     std::cout << "\n=== Micro Benchmark Results ===\n";
     std::cout << "Iterations: " << num_iterations << "\n";
     std::cout << "Total Time: " << duration_ms.count() << " ms\n";

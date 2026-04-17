@@ -4,11 +4,14 @@ _micro_benchmark:
     
 
     // Stack Frame speichern
-    stp s8, s9, [sp, #-16]!
-    stp s10, s11, [sp, #-16]!
-    stp s12, s13, [sp, #-16]!
-    stp s14, s15, [sp, #-16]!
-    
+    stp d8, d9, [sp, #-16]!
+    stp d10, d11, [sp, #-16]!
+    stp d12, d13, [sp, #-16]!
+    stp d14, d15, [sp, #-16]!
+
+.loop_start:
+    cbz x0, .loop_end
+
     .rep 50 // N = 50 * 2 * 28
 
         fmadd s0, s29, s30, s31
@@ -46,13 +49,18 @@ _micro_benchmark:
         fmadd s26, s29, s30, s31;
         fmadd s27, s29, s30, s31;
     
-    .endr
     
-    // Stack Frame speichern
-    ldp s8, s9, [sp, #-16]!
-    ldp s10, s11, [sp, #-16]!
-    ldp s12, s13, [sp, #-16]!
-    ldp s14, s15, [sp, #-16]!
+    .endr
+
+    sub x0, x0, #1
+    b .loop_start
+
+.loop_end:
+    // Stack Frame wiederherstellen
+    ldp d14, d15, [sp], #16
+    ldp d12, d13, [sp], #16
+    ldp d10, d11, [sp], #16
+    ldp d8, d9, [sp], #16
 
     ret
 
