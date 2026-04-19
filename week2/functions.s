@@ -65,7 +65,77 @@ _micro_benchmark:
     ret
 
 
-    .global _perm_neon_abc_cba
+.global _perm_neon_abc_cba
 _perm_neon_abc_cba:
+    // x0 = size_c
+    // x1 = abc pointer
+    // x2 = cba pointer
 
+    mov x3, x0          // size_c
+    mov x4, x1          // abc base
+    mov x5, x2          // cba base
+
+    mov x6, #0          // a = 0
+
+// ---------------- a loop ----------------
+a_loop:
+    cmp x6, #8
+    bge done
+
+    mov x7, #0          // b = 0
+
+// ---------------- b loop ----------------
+b_loop:
+    cmp x7, #4
+    bge next_a
+
+    mov x8, #0          // c = 0
+
+// ---------------- c loop ----------------
+c_loop:
+    cmp x8, x3
+    bge next_b
+
+    // =====================================================
+    // LOAD: abc[a][b][c]
+    // index = ((a * 4) + b) * size_c + c
+    // =====================================================
+
+    lsl x9, x6, #2              // a * 4
+    add x9, x9, x7              // + b
+    mul x9, x9, x3              // * size_c
+    add x9, x9, x8              // + c
+
+    add x9, x4, x9, lsl #2      // abc_base + index * 4 (bytes base)
+    ldr s0, [x9]
+
+    // =====================================================
+    // STORE: cba[c][b][a]
+    // index = ((c * 4) + b) * 8 + a
+    // =====================================================
+
+    lsl x10, x8, #5             // c * (B * A = 32)
+    add x10, x10, x7, lsl #3    // + b * 8
+    add x10, x10, x6            // + a
+
+    add x10, x5, x10, lsl #2    // cba_base + index * 4 (bytes base)
+    str s0, [x10]
+
+    // c++
+    add x8, x8, #1
+    b c_loop
+
+// ---------------- next b ----------------
+next_b:
+    // b++
+    add x7, x7, #1
+    b b_loop
+
+// ---------------- next a ----------------
+next_a:
+    // a++
+    add x6, x6, #1
+    b a_loop
+
+done:
     ret

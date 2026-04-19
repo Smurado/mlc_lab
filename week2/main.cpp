@@ -80,3 +80,48 @@ TEST_CASE("Einsum Permutation abc -> cba wird korrekt berechnet", "[perm_neon_ab
         }
     }
 }
+
+/*
+TEST_CASE("Test Print abc to cba", "[print_perm]") {
+    const int A = 8;
+    const int B = 4;
+    const int64_t size_c = 4;
+    const int total_elements = A * B * size_c;
+
+    float abc[total_elements];
+    float cba[total_elements];
+
+    // Array mit Testwerten initialisieren
+    for (int i = 0; i < total_elements; ++i) {
+        abc[i] = static_cast<float>(i + 1);
+        cba[i] = 0.0f;
+    }
+
+    std::cout << "\nVorher: abc Array (" << A << "x" << B << "x" << size_c << "):\n\n";
+    for (int a = 0; a < A; ++a) {
+        for (int b = 0; b < B; ++b) {
+            for (int c = 0; c < size_c; ++c) {
+                int idx = a * (B * size_c) + b * size_c + c;
+                std::cout << abc[idx] << " ";
+            }
+            std::cout << "\n";
+        }
+        std::cout << "\n\n";
+    }
+
+    // Aufrufen der NEON Assembly-Funktion
+    perm_neon_abc_cba(size_c, abc, cba);
+
+    std::cout << "Nachher: cba Array (" << size_c << "x" << B << "x" << A << "):\n\n";
+    for (int c = 0; c < size_c; ++c) {
+        for (int b = 0; b < B; ++b) {
+            for (int a = 0; a < A; ++a) {
+                int idx = c * (B * A) + b * A + a;
+                std::cout << cba[idx] << " ";
+            }
+            std::cout << "\n ";
+        }
+        std::cout << "\n\n";
+    }
+}
+*/
