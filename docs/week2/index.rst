@@ -128,17 +128,18 @@ für ein kleines Beispiel (``A=8, B=4, C=4``) ausdruckt.
 
 **Bandbreiten-Messung**
 
-Der Benchmark ``[perm_bench]`` misst für verschiedene :math:`|c|` die effektive
-Speicherbandbreite:
+Mit dem Benchmark ``[perm_bench]`` haben wir getestet, wie hoch die tatsächliche
+Speicherbandbreite bei unterschiedlichen Größen für :math:`|c|` ist. Die bewegten
+Daten (einmal lesen, einmal schreiben) berechnen sich so:
 
 .. math::
 
     \text{bytes} = 2 \cdot |a| \cdot |b| \cdot |c| \cdot \text{sizeof(float)}
-                   \quad (\text{read + write})
 
-Die Anzahl der Wiederholungen wird pro Messpunkt so gewählt, dass insgesamt
-ca. :math:`2^{28}` Elemente berührt werden. Vor jeder Messung laufen 3
-Warmup-Calls.
+Damit die Messungen vergleichbar bleiben, passen wir die Anzahl der
+Schleifendurchläufe immer so an, dass am Ende insgesamt knapp :math:`2^{28}`
+Elemente verarbeitet werden. Außerdem machen wir vor der eigentlichen Zeitnahme
+immer 3 Warmup-Calls.
 
 .. list-table::
    :header-rows: 1
