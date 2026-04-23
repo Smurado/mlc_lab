@@ -92,23 +92,12 @@ zusammengefasst. Aus der Form :math:`(A, B, C)` wird :math:`(C, B, A)`.
 
 **Kernel-Idee**
 
-Ein naiver Triple-Loop hätte zwar sequenzielle Reads aus ``abc``, müsste aber
-in ``cba`` mit einem Schreib-Stride von :math:`B \cdot A \cdot 4 = 128` Bytes
-zwischen aufeinanderfolgenden ``c``-Werten arbeiten - pro Store wird dann nur
-ein Bruchteil einer Cache Line genutzt.
+Anstatt einfach drei verschachtelte Schleifen zu nutzen - was beim Schreiben riesige Speichersprünge von :math:`B \cdot A \cdot 4 = 128` Bytes zur Folge hätte und die Cache-Lines ignoriert - haben wir das Ganze blockweise mit NEON umgesetzt.
 
-Stattdessen arbeiten wir in der NEON-Implementierung mit **4×4-Transpose-Tiles**:
+Wir iterieren außen über ``b`` und bearbeiten das ``c`` in 4er-Schritten. Wir laden für alle 8 ``a``-Zeilen mit ``ld1`` direkt 4 Werte auf einmal in die Register. So erhalten wir zwei 4x4-Blöcke, die wir anschließend mit den Befehlen ``trn1``/``trn2`` und ``zip1``/``zip2`` "umkippen". 
 
-- Äußerer Loop über ``b``.
-- Innerer Loop über ``c`` in 4er-Blöcken.
-- Für jede der 8 ``a``-Zeilen wird mit ``ld1 {v.4s}`` ein 4-Float-Vektor
-  (vier aufeinanderfolgende ``c``-Werte) geladen.
-- Zwei 4×4-Tiles (``a=0..3`` und ``a=4..7``) werden mit ``trn1``/``trn2`` und
-  ``zip1``/``zip2`` transponiert. Danach enthält jedes Ziel-Register 4 ``a``-Werte
-  für ein festes ``c``.
-- Pro ``c`` schreibt ein einziges ``stp q, q`` 8 ``a``-Werte zusammenhängend
-  nach ``cba``.
-- Der Rest (:math:`|c| \bmod 4`) wird mit einem einfachen skalaren Loop kopiert.
+Durch das Transponieren liegen die Daten danach genau so in den Registern, dass wir für ein bestimmtes ``c`` alle 8 ``a``-Werte direkt mit einem einzigen ``stp q, q`` Befehl am Stück in ``cba`` wegschreiben können. 
+Falls am Ende noch Elemente übrig bleiben (wenn :math:`|c|` nicht ohne Rest durch 4 teilbar ist), kopiert eine kurze skalare Schleife einfach den Rest.
 
 Pseudocode::
 
@@ -208,16 +197,13 @@ Warmup-Calls.
      - 73,5 ms
      - 27,2 GiB/s
 
-**Interpretation**
+**Interpretation der Ergebnisse**
 
-- :math:`|c| = 128 \ldots 512`: Beide Tensoren passen vollständig in den L1-Cache
-  (Gesamtgröße 32-128 KiB pro Tensor). Hier erreichen wir den **Peak von ca.
-  195 GiB/s** - der Kernel ist durch die L1-Bandbreite limitiert.
-- :math:`|c| \geq 1024`: Arbeitsmenge sprengt L1 und später L2. Die Bandbreite
-  fällt auf DRAM-nahe **30-55 GiB/s** - hier ist der Kernel klar
-  speicherbandbreiten-limitiert.
-- :math:`|c| = 4` und :math:`|c| = 8`: Pro-Call-Overhead (Prolog, Loop-Setup)
-  dominiert, der L1-Peak wird noch nicht erreicht.
+Wenn wir uns die gemessenen Werte anschauen, sieht man folgendes:
+
+- Für Werte von :math:`|c|` zwischen 128 und 512 erreichen wir die höchste Bandbreite (den Peak) mit knapp **195 GiB/s**. Das liegt daran, dass beide Tensoren hier noch komplett in den extrem schnellen L1-Cache passen (sie sind da nur 32 bis 128 KiB groß). Der Kernel wird in dem Bereich also nur durch den L1-Cache limitiert.
+- Sobald :math:`|c|` größer oder gleich 1024 wird, werden die Daten zu groß für den L1- und irgendwann auch für den L2-Cache. Das sieht man sofort, weil die Bandbreite stark einbricht und auf **30 bis 55 GiB/s** abfällt. Ab hier müssen die Daten aus dem deutlich langsameren Arbeitsspeicher (DRAM) geholt werden, was dann auch den Flaschenhals bildet.
+- Bei kleinen Werten wie :math:`|c| = 4` oder :math:`|c| = 8` ist die reine Ausführung so schnell vorbei, dass der Overhead für den Funktionsaufruf und das Einrichten der Schleife zu stark ins Gewicht fallen. Deswegen erreichen wir da noch nicht den vollen Peak vom L1-Cache.
 
 
 4. Unit Tests und Benchmarks mit Catch2
@@ -241,7 +227,3 @@ getrennt aufrufbar:
 
     # Visualisierung der Permutation
     ./test_run "[perm_print]"
-
-Die CI-Pipeline in ``.github/workflows/tests.yml`` überspringt die Benchmark-Tags
-(``~[*_bench]``, ``~[perm_print]``), da diese unter QEMU-Emulation zu langsam
-wären; geprüft werden dort ausschließlich die Korrektheitstests.
