@@ -28,6 +28,6 @@ Week 2
 
 **Teammitglied 2: Julian Müller**
 
-* Implementierung Basisfunktion als Vorbereitung für die Benchmarks
+* Implementierung der Basisfunktion für die Benchmarks
 * Implementierung der Matrixtransformation
   - ``abc -> cba``
