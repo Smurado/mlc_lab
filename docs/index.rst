@@ -8,3 +8,4 @@ Dieses Dokument enthält den Projektbericht für das MLC Lab, inklusive aller no
 
    contributions
    week1/index
+   week2/index

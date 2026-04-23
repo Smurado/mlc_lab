@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -19,12 +19,24 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y g++-aarch64-linux-gnu qemu-user
 
-    - name: Compile Tests (ARM64)
+    - name: Build and Test all weekN folders
       run: |
-        cd week1
-        aarch64-linux-gnu-g++ -g -Wall -Wextra -Werror main.cpp functions.s -o test_run
+        set -e
+        # Alle Ordner der Form weekN mit main.cpp + functions.s automatisch einsammeln
+        shopt -s nullglob
+        for dir in week*/; do
+          week="${dir%/}"
+          if [[ -f "$week/main.cpp" && -f "$week/functions.s" ]]; then
+            echo "::group::Build $week"
+            aarch64-linux-gnu-g++ -g -Wall -Wextra -Werror \
+              "$week/main.cpp" "$week/functions.s" -o "$week/test_run"
+            echo "::endgroup::"
 
-    - name: Execute Catch2 Unit Tests (via Emulator)
-      run: |
-        cd week1
-        qemu-aarch64 -L /usr/aarch64-linux-gnu ./test_run
+            echo "::group::Test $week (Benchmarks werden in CI uebersprungen)"
+            # Benchmarks haben *_bench Tags und sind unter QEMU zu langsam
+            qemu-aarch64 -L /usr/aarch64-linux-gnu "./$week/test_run" \
+              "~[fmadd_bench]" "~[fmla4s_bench]" "~[fmla2s_bench]" \
+              "~[perm_bench]" "~[perm_print]" "~[micro_benchmark_bench]"
+            echo "::endgroup::"
+          fi
+        done
