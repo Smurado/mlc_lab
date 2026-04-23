@@ -1,9 +1,10 @@
-.global _micro_benchmark, _micro_benchmark_fmla_4s, _micro_benchmark_fmla_2s, _perm_neon_abc_cba
+.global _micro_benchmark, _micro_benchmark_fmla_4s, _micro_benchmark_fmla_2s, _perm_neon_abc_cba, micro_benchmark, micro_benchmark_fmla_4s, micro_benchmark_fmla_2s, perm_neon_abc_cba
 
 
 // Microbenchmark: FMADD (scalar, FP32)
 // Pro Iteration: 50 (Unroll) * 28 (unabhaengige Zielregister) FMADDs
 _micro_benchmark:
+micro_benchmark:
     // Callee-saved FP-Register sichern (d8..d15)
     stp d8,  d9,  [sp, #-16]!
     stp d10, d11, [sp, #-16]!
@@ -59,6 +60,7 @@ fmadd_loop_end:
 // Microbenchmark: FMLA (vector, Arrangement 4S)
 // Gleiche Struktur wie fmadd, aber Vektor-FMLA auf 4 Lanes.
 _micro_benchmark_fmla_4s:
+micro_benchmark_fmla_4s:
     stp d8,  d9,  [sp, #-16]!
     stp d10, d11, [sp, #-16]!
     stp d12, d13, [sp, #-16]!
@@ -111,6 +113,7 @@ fmla4s_loop_end:
 
 // Microbenchmark: FMLA (vector, Arrangement 2S)
 _micro_benchmark_fmla_2s:
+micro_benchmark_fmla_2s:
     stp d8,  d9,  [sp, #-16]!
     stp d10, d11, [sp, #-16]!
     stp d12, d13, [sp, #-16]!
@@ -171,6 +174,7 @@ fmla2s_loop_end:
 // 4 a-Werte fuer ein festes c, sodass wir pro c alle 8 a-Werte mit
 // einem STP q,q schreiben koennen. Rest (|c| % 4) wird skalar kopiert.
 _perm_neon_abc_cba:
+perm_neon_abc_cba:
     // x0 = size_c (C), x1 = abc, x2 = cba
     cbz x0, perm_end            // C == 0 -> nichts zu tun
 
