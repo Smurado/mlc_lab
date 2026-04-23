@@ -27,4 +27,6 @@ Week 2
   - ``FMLA`` (vector) mit Arrangement Specifier ``2S``
 
 **Teammitglied 2: Julian Müller**
-
+* Implementierung Basisfunktion als Vorbereitung für die Benchmarks
+* Implementierung der Matrixtransformation
+  - ``abc -> cba 
