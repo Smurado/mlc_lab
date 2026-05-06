@@ -32,3 +32,15 @@ Week 2
 * Implementierung der Matrixtransformation
 
   - ``abc -> cba``
+
+Week 3
+------
+
+**Teammitglied 1: Justin Bergmann**
+
+* Implementierung der ARM SME GEMM Microkernel
+* Optimierung der SME Kernel-Ausführung durch "Fast"-Routinen
+* Integration und Auswertung der Catch2 C++ Performance-Benchmarks (GFLOPS)
+
+**Teammitglied 2: Julian Müller**
+
