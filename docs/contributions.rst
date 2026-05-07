@@ -43,4 +43,7 @@ Week 3
 * Integration und Auswertung der Catch2 C++ Performance-Benchmarks (GFLOPS)
 
 **Teammitglied 2: Julian Müller**
+* Implementierung der SSVE Unary-Kernel
+* Implementierung der Unit-Tests für Kernel-Funktionen
+
 
