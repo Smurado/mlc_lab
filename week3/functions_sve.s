@@ -2,6 +2,62 @@
 // - zero_16_16
 // - relu_16_16
 
+// void identity_16_16(float const * a, float * b, int64_t ld_a, int64_t ld_b, int32_t trans_b)
+// x0 = a (Source)
+// x1 = b (Destination)
+// x2 = ld_a (Leading Dimension A)
+// x3 = ld_b (Leading Dimension B)
+// w4 = trans_b (0 = Kopieren, 1 = Transponieren)
+
+.text
+.align 4
+.global _identity_16_16
+_identity_16_16:
+    // We use 'za' here because permutation is best done via the matrix tile
+    smstart              
+    ptrue   p0.s, vl16
+    lsl     x2, x2, #2
+    lsl     x3, x3, #2
+
+    cmp     w4, #1
+    b.eq    .id_permute
+
+.id_copy:
+    mov     x9, #16
+.id_copy_loop:
+    ld1w    {z0.s}, p0/z, [x0]
+    st1w    {z0.s}, p0, [x1]
+    add     x0, x0, x2
+    add     x1, x1, x3
+    subs    x9, x9, #1
+    b.ne    .id_copy_loop
+    b       .id_end
+
+.id_permute:
+    // 1. Lade 16 Spalten von A horizontal in das ZA0-Tile
+    mov     w12, #0
+.id_load_tile:
+    // Syntax: [Basis-Register, Immediate-Offset]
+    ld1w    {za0h.s[w12, 0]}, p0/z, [x0]
+    add     x0, x0, x2
+    add     w12, w12, #1
+    cmp     w12, #16
+    b.ne    .id_load_tile
+
+    // 2. Speichere 16 Zeilen von ZA0 vertikal nach B
+    mov     w12, #0
+.id_store_tile:
+    // Auch hier: , 0 hinzufügen
+    st1w    {za0v.s[w12, 0]}, p0, [x1]
+    add     x1, x1, x3
+    add     w12, w12, #1
+    cmp     w12, #16
+    b.ne    .id_store_tile
+
+.id_end:
+    smstop
+    ret
+
 // void zero_16_16(float const * a, int64_t ld_a)
 // x0 = a (Pointer)
 // x1 = ld_a (Leading Dimension)

@@ -54,15 +54,14 @@ extern "C" {
 }
 
 
-/*
 TEST_CASE("identity_16_16: Kopiert Matrix korrekt", "[identity_16_16]") {
     auto a = create_matrix(16, 16);
     std::vector<float> b(16 * 16, 0.0f);
 
-    // SECTION("Column-major zu Column-major (trans_b = 0)") {
-    //     identity_16_16(a.data(), b.data(), 16, 16, 0);
-    //     REQUIRE(b == a);
-    // }
+    SECTION("Column-major zu Column-major (trans_b = 0)") {
+        identity_16_16(a.data(), b.data(), 16, 16, 0);
+        REQUIRE(b == a);
+    }
 
     SECTION("Column-major zu Row-major (trans_b = 1)") {
         identity_16_16(a.data(), b.data(), 16, 16, 1);
@@ -71,7 +70,6 @@ TEST_CASE("identity_16_16: Kopiert Matrix korrekt", "[identity_16_16]") {
                 CHECK(b[i * 16 + j] == a[j * 16 + i]);
     }
 }
-*/
 
 
 TEST_CASE("zero_16_16: Setzt Matrix auf Null", "[zero_16_16]") {
@@ -258,7 +256,7 @@ TEST_CASE("Performance Benchmarks (SVE Unary)", "[benchmark]") {
     };
 
     // identity: read A (16x16x4), write B (16x16x4) -> 2048 bytes
-    // run_unary_bench("identity_16_16", identity_16_16, 16, 16, 2048);
+    run_unary_bench("identity_16_16", identity_16_16, 16, 16, 2048);
     // zero: write A (16x16x4) -> 1024 bytes
     run_zero_bench("zero_16_16", zero_16_16, 16, 16, 1024);
     // relu: read A (16x16x4), write B (16x16x4) -> 2048 bytes
