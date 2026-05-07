@@ -3,21 +3,21 @@ Week 3:
 
 1. Introduction
 ----------------
-In Woche 3 stand die ARM Scalable Matrix Extension (SME) im Fokus. Das Ziel war die Implementierung und Optimierung von Kerneln fuer Matrizen-Multiplikationen (GEMM) in Hardware-nahem Assembly.
-Zusaetzlich sollten die Benchmarks (GFLOPS) in C++ eingebaut werden, um die Performance der unterschiedlichen Optimierungsstufen zu evaluieren. Eine Umsetzung der *Unary Primitives* fuer SSVE wurde bewusst ausgelassen, da die Anforderung beschraenkt wurde.
+Die dritte Woche drehte sich hauptsächlich um die ARM Scalable Matrix Extension (SME). Ziel war es, Kernel für Matrizen-Multiplikationen (GEMM) in AArch64 Assembly zu schreiben und diese nach und nach zu optimieren.
+Außerdem haben wir GFLOPS-Benchmarks in C++ eingebaut, um die Performance-Unterschiede der einzelnen Optimierungsschritte gut vergleichen zu können. Die Unary Primitives für SSVE (Identity, Zero, ReLU) wurden wie in Task 1 gefordert ebenfalls umgesetzt und runden als Basis-Vorarbeit das Ganze ab.
 
 2. SSVE Unary Primitives (Einfache Matrix-Operationen)
 ----------------
 
-Zuerst wurden grundlegende unäre Operationen für 16x16 Matrizen implementiert. Diese nutzen **SSVE** (Streaming SVE), um die volle Vektorbreite der Hardware (512-bit auf Apple Silicon) auszuschöpfen.
+Für die Basis haben wir einfache unäre Operationen für 16x16 Matrizen geschrieben. Die nutzen **SSVE** (Streaming SVE), wodurch wir die vollen 512-bit Vektorregister ausnutzen können.
 
 ### Implementierte Kernels
-- **identity_16_16**: Kopiert eine Matrix oder führt eine Transposition durch. Hierbei wird die SME-Besonderheit genutzt, Daten horizontal zu laden (`za0h`) und vertikal zu speichern (`za0v`).
-- **zero_16_16**: Setzt alle Matrixelemente effizient auf Null.
-- **relu_16_16**: Berechnet die ReLU-Aktivierung ($max(0, x)$). Im Transpose-Pfad wird die Operation direkt beim Laden in das ZA-Array durchgeführt.
+- **identity_16_16**: Kopiert eine Matrix oder führt eine Transposition durch. Hier kann man schön den SME-Trick mit horizontalem Laden (`za0h`) und vertikalem Speichern (`za0v`) nutzen.
+- **zero_16_16**: Setzt einfach alle Elemente im Array auf Null.
+- **relu_16_16**: Berechnet die ReLU-Aktivierung ($max(0, x)$). Wenn transponiert wird, passiert die Operation direkt beim Laden in das ZA-Tile.
 
 ### Performance-Ergebnisse
-Die Messung erfolgt in **GiB/s**, da diese Operationen primär durch die Speicherbandbreite des L1-Caches limitiert sind.
+Hier messen wir in **GiB/s**, weil diese Operationen eigentlich fast immer vom Speicher bzw. L1-Cache ausgebremst werden (Memory Bound).
 
 | Funktion | Durchsatz (GiB/s) | Durchschnittliche Zeit |
 | :--- | :--- | :--- |
@@ -25,47 +25,46 @@ Die Messung erfolgt in **GiB/s**, da diese Operationen primär durch die Speiche
 | **relu_16_16** | **110.79 GiB/s** | 0.02 µs |
 | **zero_16_16** | **62.25 GiB/s** | 0.02 µs |
 
-### Analyse & Besonderheiten
-- **Maximale Bandbreite**: Werte von über 110 GiB/s zeigen, dass die SSVE-Implementierung den Datenpfad des Prozessors nahezu vollständig sättigt.
-- **SME Transposition**: Die hardwareseitige Transposition über das ZA-Tile vermeidet teure Scatter-Store-Befehle. Dies sorgt für eine stabile Performance und verhindert Abstürze (`SIGILL`), die bei nicht-standardkonformen SVE-Zugriffen auf Apple-Hardware auftreten können.
-- **Zero-Durchsatz**: Der rechnerisch niedrigere Wert bei `zero_16_16` resultiert daraus, dass keine Quelldaten gelesen werden müssen. Da GiB/s den gesamten Datenfluss (Read + Write) beschreibt, halbiert sich der Wert gegenüber den bidirektionalen Kernels (Identity/ReLU) nominell.
+### Beobachtungen & Besonderheiten
+- **Speicherauslastung**: Ein Durchsatz von über 110 GiB/s zeigt, dass wir die Bandbreite gut ausreizen und der Prozessor die Daten zügig schaufelt.
+- **SME Transposition**: Durch das Laden/Speichern über das ZA-Tile umgehen wir langsame Scatter/Store-Instruktionen. Das macht es nicht nur schneller, sondern verhindert auch eklige Abstürze (`SIGILL`), die auf dem Mac bei fehlerhaftem Memory-Alignment gerne mal auftreten.
+- **Wieso ist Zero so langsam?**: Bei `zero_16_16` ist der Wert nominell niedriger (halb so groß). Das liegt einfach daran, dass wir keine Quelldaten lesen, sondern nur überschreiben. Da sich GiB/s hier aus "Lesen + Schreiben" ergibt, halbiert sich der gemessene Wert im Vergleich zu Identity/ReLU logischerweise.
 
 3. Implementation & Microkernels
 ------------------
-Die Implementierung der Matrizen-Multiplikation erfolgte inkrementell in AArch64 SME-Assembly (``functions_sme.s``).
-Auf diese Weise laesst sich die GEMM-Problematik Schritt fuer Schritt optimieren.
+Die Matrizen-Multiplikationen wurden schrittweise in Assembly umgesetzt (``functions_sme.s``). Dadurch konnte man das Problem in kleinere Stücke zerteilen und Step by Step optimieren.
 
 **Rank-1 Update (gemm_32_32_1)**
 
-Berechnet das Rank-1 Update einer Matrix: ``C += A * B``.
+Macht im Grunde nur ein Rank-1 Update: ``C += A * B``.
 
-- Ohne Schleifen
-- Laedt Spalten von A und Reihen von B
-- FMA-Berechnung in das ZA-Array mittels Outer-Product (``fmopa``)
+- Verwendet noch keine Schleifen
+- Lädt komplette Spalten von A und Reihen von B
+- Macht die Multiply-Accumulate-Rechnung direkt im ZA-Array mittels Outer-Product (``fmopa``)
 
 **K-Loop (gemm_32_32_512)**
 
-Erweitert das Update um eine Kachel-Schleife ueber K=512 auf C(32x32).
+Hier kommt eine Kachel-Schleife über K=512 auf C(32x32) dazu.
 
-- Initialisiert Schleife ueber die Laenge 512
-- Durchgaengige Outer-Product Operation der Block-Slices im aktiven SME-Stadium
+- Schleife läuft 512 Iterationen lang
+- Wirft das Outer-Product kontinuierlich als Schleife im SME-Modus auf das ZA-Array
 
 **M-Loop & N-Loop Wrappers (gemm_512_32_512 & gemm_512_512_512)**
 
-Erweitern den K-Loop um weitere Dimensionen auf M=512 und N=512, jeweils als Wrappert-Funktionen.
+Packen den K-Loop nochmal in äußere Schleifen über die Dimensionen M=512 und N=512 (bauen sie quasi ein).
 
 4. Optimierung (smstart/smstop Overhead)
 -------------------------
-Bei der vollen Multiplikationsfunktion ``gemm_512_512_512`` wurde ein enormer Overhead festgestellt, da durch die wiederholten Aufrufe permanent ``smstart`` und ``smstop`` ausgefuehrt wurde (256 mal pro vollem Zyklus). Dies erzeugte erhebliche Moduswechselkosten in der Hardware.
+Wir haben ziemlich schnell gemerkt, dass die volle Matrix-Multiplikation ``gemm_512_512_512`` total ausgebremst wird. Grund dafür: Durch das wiederholte Aufrufen der kleineren Sub-Kernel wurde in jedem Durchlauf (256 mal!) ``smstart`` und ``smstop`` getriggert. Solche ständigen State-Wechsel der Hardware fressen ordentlich Performance.
 
-Als Loesung wurden interne "Fast"-Varianten der Base-Funktionen geschrieben, bei denen die Subfunktionen den SME Status der Elternfunktion erben, was dazu fuehrte, dass das ZA-Array im Prozessor nur *ein* einziges mal hoch- und runtergefahren wird.
+Als simplen Fix haben wir interne "Fast"-Varianten der Kernels geschrieben. Die Idee ist, dass die Hilfsfunktionen den SME-State des Callers einfach übernehmen. So müssen wir das ZA-Tile nur einmal ganz am Anfang hochfahren und am Ende wieder beenden.
 
 5. Performance Benchmarks
 ----------------------
-Die finalen Messungen in C++ erfolgten mittels ``std::chrono::high_resolution_clock`` und Catch2-Testfaellen, um sicherzustellen, dass Korrektheit und Geschwindigkeit parallel ueberprueft werden. 
+Gemessen wurde das Ganze in C++ mit ``std::chrono::high_resolution_clock`` über unsere Catch2-Testfälle. So sieht man auch direkt, ob neben der Performance auch das Ergebnis noch stimmt. 
 
-Bei der Berechnung wurden 2 FLOPs (Multiply-Add) pro Einzelaufruf angesetzt. Hier sind die resultierenden Werte bei Ausfuehrung unter ``-O3`` auf dem Apple Silicon System:
+Für den GFLOPS-Wert haben wir 2 FLOPs (Multiply + Add) pro Schleifendurchlauf angenommen. Die Messungen basieren auf einem Apple Silicon Chip mit ``-O3`` Option:
 
-- **gemm_32_32_1**: Geringer GFLOPS Wert aufgrund des hohen Setup-Overheads bei kurzen Routinen (~10 GFLOPS).
-- **gemm_32_32_512 (K-Loop)**: Exzellenter Wert dank optimalem Caching und sauberer FMA-Ratio (~893 GFLOPS).
-- **gemm_512_512_512 (Voller N-Loop)**: Maximale Performance durch Vermeidung redundanter ``smstart`` Operationen. Der Benchmark erreichte ca. **1001 GFLOPS**.
+- **gemm_32_32_1**: Recht bescheidene GFLOPS (~10), aber das liegt einfach daran, dass die Funktion quasi nur State aufbaut und direkt wieder schliesst (Setup zu Teuer für die kurze Laufzeit).
+- **gemm_32_32_512 (K-Loop)**: Sehr hohe GFLOPS (~893 GFLOPS). Hier passiert fast alles im Cache, weshalb die Hardware perfekt ausgereizt wird.
+- **gemm_512_512_512 (Voller N-Loop)**: Hier macht sich unser Fix für den `smstart`-Overhead bemerkbar. Die Matrixberechnung knackt knapp die **1001 GFLOPS**.
