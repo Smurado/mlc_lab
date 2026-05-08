@@ -21,12 +21,12 @@ Hier messen wir in **GiB/s**, weil diese Operationen eigentlich fast immer vom S
 
 | Funktion | Durchsatz (GiB/s) | Durchschnittliche Zeit |
 | :--- | :--- | :--- |
-| **identity_16_16** | **37.13 GiB/s** | 0.05 µs |
-| **zero_16_16**     | **41.01 GiB/s** | 0.02 µs |
-| **relu_16_16**     | **54.23 GiB/s** | 0.04 µs |
+| **identity_16_16** | **128.47 GiB/s** | 0.01 µs |
+| **zero_16_16**     | **63.32 GiB/s** | 0.02 µs |
+| **relu_16_16**     | **87.15 GiB/s** | 0.02 µs |
 
 ### Beobachtungen & Besonderheiten
-- **Speicherauslastung**: Die gemessenen Durchsätze liegen im Bereich von ca. 37 bis 54 GiB/s. `relu_16_16` schneidet hier mit knapp über 54 GiB/s am besten ab.
+- **Speicherauslastung**: Die gemessenen Durchsätze liegen im Bereich von ca. 63 bis 128 GiB/s. `identity_16_16` schneidet hier mit knapp über 128 GiB/s am besten ab.
 - **SME Transposition**: Durch das Laden/Speichern über das ZA-Tile umgehen wir langsame Scatter/Store-Instruktionen. Das macht es nicht nur schneller, sondern verhindert auch eklige Abstürze (`SIGILL`), die auf dem Mac bei fehlerhaftem Memory-Alignment gerne mal auftreten.
 
 3. Implementation & Microkernels
@@ -64,7 +64,7 @@ Gemessen wurde das Ganze in C++ mit ``std::chrono::high_resolution_clock`` über
 
 Für den GFLOPS-Wert haben wir 2 FLOPs (Multiply + Add) pro Schleifendurchlauf angenommen. Die Messungen basieren auf einem Apple Silicon Chip in unserer Testumgebung:
 
-- **gemm_32_32_1**: Recht bescheidene **6.20 GFLOPS**, aber das liegt einfach daran, dass die Funktion quasi nur State aufbaut und direkt wieder schliesst (Setup zu Teuer für die kurze Laufzeit).
-- **gemm_32_32_512 (K-Loop)**: Sehr hohe Performance von **771.74 GFLOPS**. Hier passiert fast alles im Cache, weshalb die Hardware perfekt ausgereizt wird.
-- **gemm_512_32_512 (M-Loop)**: Erreicht rund **897.70 GFLOPS**.
-- **gemm_512_512_512 (Voller N-Loop)**: Hier macht sich unser Fix für den `smstart`-Overhead stark bemerkbar. Die vollständige Matrixberechnung erreicht extrem starke **991.76 GFLOPS**.
+- **gemm_32_32_1**: Recht bescheidene **6.09 GFLOPS**, aber das liegt einfach daran, dass die Funktion quasi nur State aufbaut und direkt wieder schliesst (Setup zu Teuer für die kurze Laufzeit).
+- **gemm_32_32_512 (K-Loop)**: Sehr hohe Performance von **1658.48 GFLOPS**. Hier passiert fast alles im Cache, weshalb die Hardware perfekt ausgereizt wird.
+- **gemm_512_32_512 (M-Loop)**: Erreicht rund **1652.05 GFLOPS**.
+- **gemm_512_512_512 (Voller N-Loop)**: Hier macht sich unser Fix für den `smstart`-Overhead stark bemerkbar. Die vollständige Matrixberechnung erreicht extrem starke **1625.03 GFLOPS**.
