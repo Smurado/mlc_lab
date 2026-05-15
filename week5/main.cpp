@@ -8,7 +8,7 @@
 using namespace mini_jit;
 
 bool verify_zero(uint32_t m, uint32_t n) {
-    std::vector<float> B(m * n, 1.0f); // Initialize with 1s
+    std::vector<float> B(m * n, 1.0f); // Array mit Einsen füllen
     Unary kernel_gen;
     if (kernel_gen.generate(m, n, 0, Unary::dtype_t::fp32, Unary::ptype_t::zero) != Unary::error_t::success) return false;
     
@@ -45,7 +45,7 @@ bool verify_identity(uint32_t m, uint32_t n) {
 bool verify_relu(uint32_t m, uint32_t n) {
     std::vector<float> A(m * n);
     std::vector<float> B(m * n, 0.0f);
-    for (size_t i = 0; i < A.size(); ++i) A[i] = static_cast<float>(i) - static_cast<float>(A.size()/2); // Mix of positive and negative
+    for (size_t i = 0; i < A.size(); ++i) A[i] = static_cast<float>(i) - static_cast<float>(A.size()/2); // Mix aus negativen und positiven Werten
 
     Unary kernel_gen;
     if (kernel_gen.generate(m, n, 0, Unary::dtype_t::fp32, Unary::ptype_t::relu) != Unary::error_t::success) return false;
@@ -62,9 +62,10 @@ bool verify_relu(uint32_t m, uint32_t n) {
     return true;
 }
 
-__attribute__((optimize("O0"))) // Disable optimization for benchmark functions so loop timing constants
-// aren't held in callee-saved SIMD registers (d8-d15) during JIT kernel calls
-// since our smstart clobbers them!
+// Wir deaktiveren hier gezielt die C++ Compiler-Optimierung für die Benchmark-Funktionen (O0).
+// Sonst speichert der Compiler die lokalen Variablen zur Zeitmessung in den "callee-saved" 
+// Vector-Registern (d8-d15). Da "smstart sm" diese Register hardwareseitig nullt, bekämen 
+// wir sonst Divisionen durch Null und kaputte Timer.
 __attribute__((optimize("O0"))) void benchmark(uint32_t m, uint32_t n, Unary::ptype_t ptype, const std::string& name, bool benchmark_mode) {
     Unary kernel_gen;
     if (kernel_gen.generate(m, n, 0, Unary::dtype_t::fp32, ptype) != Unary::error_t::success) {
@@ -82,7 +83,7 @@ __attribute__((optimize("O0"))) void benchmark(uint32_t m, uint32_t n, Unary::pt
     double total_gib_per_sec = 0.0;
     
     for (int outer = 0; outer < outer_runs; ++outer) {
-        // Warmup
+        // Cache anwärmen (Warmup)
         for (int i = 0; i < 100; ++i) {
             kernel(A.data(), B.data(), m, m);
         }
@@ -94,12 +95,12 @@ __attribute__((optimize("O0"))) void benchmark(uint32_t m, uint32_t n, Unary::pt
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> diff = end - start;
         
-        // Calculate GiB/s
+        // Durchsatz in GiB/s berechnen
         double bytes_per_run = 0;
         if (ptype == Unary::ptype_t::zero) {
-            bytes_per_run = m * n * sizeof(float); // Write only
+            bytes_per_run = m * n * sizeof(float); // Nur Schreiben
         } else {
-            bytes_per_run = 2.0 * m * n * sizeof(float); // Read + Write
+            bytes_per_run = 2.0 * m * n * sizeof(float); // Lesen + Schreiben
         }
         
         double total_bytes = bytes_per_run * num_runs;
@@ -179,7 +180,7 @@ __attribute__((optimize("O0"))) __attribute__((optimize("O0"))) void benchmark_g
     double total_gflops_per_sec = 0.0;
     
     for (int outer = 0; outer < outer_runs; ++outer) {
-        // Warmup
+        // Cache anwärmen (Warmup)
         for (int i = 0; i < 5; ++i) kernel(A.data(), B.data(), C.data(), m, k, m);
 
         auto start = std::chrono::high_resolution_clock::now();

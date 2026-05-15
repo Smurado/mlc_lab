@@ -10,27 +10,27 @@ namespace mini_jit {
 
 class mini_jit::Gemm {
   public:
-    /// data type
+    /// Datentyp der Matrizen
     enum class dtype_t : uint32_t {
       fp32 = 0,
       fp64 = 1
     };
 
-    /// error codes
+    /// Fehlercodes
     enum class error_t : int32_t {
       success = 0
     };
 
     /**
-     * @brief Generate a kernel for matrix multiplication.
-     * @param m       Number of rows in A and C.
-     * @param n       Number of columns in B and C.
-     * @param k       Number of columns in A and rows in B.
-     * @param trans_a 0 if A is stored in column-major order, 1 if A is stored in row-major order.
-     * @param trans_b 0 if B is stored in column-major order, 1 if B is stored in row-major order.
-     * @param trans_c 0 if C is stored in column-major order, 1 if C is stored in row-major order.
-     * @param dtype   Data type of the matrices.
-     * @return error_t::success on success, another error_t value otherwise.
+     * @brief Generiert einen Kernel für Matrizen-Multiplikation.
+     * @param m       Anzahl der Zeilen in A und C.
+     * @param n       Anzahl der Spalten in B und C.
+     * @param k       Anzahl der Spalten in A und Zeilen in B.
+     * @param trans_a 0 wenn A spaltenbasiert (column-major) vorliegt, 1 wenn zeilenbasiert.
+     * @param trans_b 0 wenn B spaltenbasiert vorliegt, 1 wenn zeilenbasiert.
+     * @param trans_c 0 wenn C spaltenbasiert vorliegt, 1 wenn zeilenbasiert.
+     * @param dtype   Datentyp der Matrizen.
+     * @return error_t::success bei Erfolg, ansonsten passender Fehlercode.
      **/
     error_t generate( uint32_t m,
                       uint32_t n,
@@ -41,13 +41,14 @@ class mini_jit::Gemm {
                       dtype_t  dtype );
 
     /*
-     * A kernel is a function that takes the following parameters:
-     * - a:           Pointer to matrix A.
-     * - b:           Pointer to matrix B.
-     * - c:           Pointer to C matrix.
-     * - ld_a:        Leading dimension of A.
-     * - ld_b:        Leading dimension of B.
-     * - ld_c:        Leading dimension of C.
+     * C-Signatur des Kernels, um ihn via Pointer aufrufen zu können.
+     * Nimmt folgende Parameter entgegen:
+     * - a:           Pointer auf Matrix A.
+     * - b:           Pointer auf Matrix B.
+     * - c:           Pointer auf Matrix C.
+     * - ld_a:        Leading Dimension von A.
+     * - ld_b:        Leading Dimension von B.
+     * - ld_c:        Leading Dimension von C.
      */
     using kernel_t = void (*)( void    const * a,
                                void    const * b,
@@ -57,8 +58,8 @@ class mini_jit::Gemm {
                                int64_t         ld_c);
 
     /**
-     * @brief Get the generated kernel: C += A * B.
-     * @return pointer to the generated kernel.
+     * @brief Liefert den ausführbaren JIT Kernel: C += A * B.
+     * @return Zeiger auf die im Buffer liegende Maschinencode-Funktion.
      **/
     kernel_t get_kernel() const;
 

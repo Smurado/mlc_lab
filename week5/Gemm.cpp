@@ -21,9 +21,9 @@ Gemm::error_t Gemm::generate(uint32_t m, uint32_t n, uint32_t k,
     (void)trans_b;
     (void)trans_c;
     
-    // As per task, we only focus on the specific 512x512x512 kernel for now
+    // Für diese Phase konzentrieren wir uns explizit nur auf den 512x512x512 Kernel
     if (m != 512 || n != 512 || k != 512 || dtype != dtype_t::fp32) {
-        return error_t::success; // unsupported
+        return error_t::success; // Format nicht unterstützt
     }
 
     size_t size = 4096;
@@ -34,9 +34,9 @@ Gemm::error_t Gemm::generate(uint32_t m, uint32_t n, uint32_t k,
 
     uint32_t* code = reinterpret_cast<uint32_t*>(mem);
     
-    // We emit the exact instruction sequence of the highly optimized gemm_512_512_512 kernel,
-    // which delegates to the 512_32_512 and 32_32_512 matrix multiplication blocks.
-    // By keeping the function blocks consecutive, all relative branch targets remain completely valid!
+    // Hier injizieren wir die exakte Befehlsfolge unseres stark optimierten gemm_512_512_512 Kernels.
+    // Dieser delegiert intern an die 512_32_512 und 32_32_512 Sub-Blöcke.
+    // Da wir die Instruktionen nahtlos hintereinander einfügen, bleiben die relativen Sprungziele (Branch Offsets) völlig valide.
     uint32_t instructions[] = {
         0xa9ba7bfd, 0x910003fd, 0xa90153f3, 0xa9025bf5, 0xa90363f7, 0xa9046bf9, 0xf9002bfb, 0xd503477f,
         0xaa0003f3, 0xaa0103f4, 0xaa0203f5, 0xaa0303f6, 0xaa0403f7, 0xaa0503f8, 0xd2800019, 0x5280021a,

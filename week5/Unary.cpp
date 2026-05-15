@@ -41,72 +41,68 @@ Unary::error_t Unary::generate(uint32_t m, uint32_t n, uint32_t trans_b, dtype_t
     };
 
     if (ptype == ptype_t::zero) {
-        // x0 = A (not used), x1 = B, x2 = ld_a, x3 = ld_b
-        // Actually, zero signature: kernel(nullptr, B, m, m)
-        // Wait, definition is: B := op(A). For zero, A is nullptr.
-        // B is in x1, ld_b is in x3.
+        // Register-Layout: x0 = A (ungenutzt da Zero), x1 = B, x2 = ld_a, x3 = ld_b
         emit(0xd503437f); // smstart sm
         emit(0x2598e120); // ptrue p0.s, vl16
-        emit(0xd37ef463); // lsl x3, x3, #2 (ld_b in bytes)
+        emit(0xd37ef463); // lsl x3, x3, #2 (ld_b in Bytes umwandeln)
         emit(0x25b8c000); // mov z0.s, #0
 
-        // outer loop count (columns n)
-        emit(encode_mov_k_x(9, n));     // mov x9, n
+        // Äussere Schleife über Spalten (n)
+        emit(encode_mov_k_x(9, n));       // mov x9, n
         
         int outer_start = idx;
         emit(encode_mov_k_x(10, m / 16)); // mov x10, m / 16
-        emit(0xaa0103ea);                 // mov x10 (Wait, mov x10, x1? No, let's use x4 for pointer: mov x4, x1 -> 0xaa0103e4)
-        code[idx - 1] = 0xaa0103e4;
+        code[idx++] = 0xaa0103e4;         // mov x4, x1 (Pointer auf B)
 
         int inner_start = idx;
-        emit(0xe540e080);                 // st1w {z0.s}, p0, [x4]
-        emit(0x91010084);                 // add x4, x4, #64
-        emit(0xf100054a);                 // subs x10, x10, #1
+        emit(0xe540e080);                    // st1w {z0.s}, p0, [x4]
+        emit(0x91010084);                    // add x4, x4, #64
+        emit(0xf100054a);                    // subs x10, x10, #1
         emit(encode_b_ne(inner_start, idx)); // b.ne inner
         
-        emit(0x8b030021);                 // add x1, x1, x3
-        emit(0xf1000529);                 // subs x9, x9, #1
+        emit(0x8b030021);                    // add x1, x1, x3
+        emit(0xf1000529);                    // subs x9, x9, #1
         emit(encode_b_ne(outer_start, idx)); // b.ne outer
 
         emit(0xd503427f); // smstop sm
         emit(0xd65f03c0); // ret
     } 
     else if (ptype == ptype_t::identity) {
-        // x0 = a, x1 = b, x2 = ld_a, x3 = ld_b
+        // Register-Layout: x0 = a, x1 = b, x2 = ld_a, x3 = ld_b
         emit(0xd503477f); // smstart
         emit(0x2598e120); // ptrue p0.s, vl16
-        emit(0xd37ef442); // lsl x2, x2, #2 (ld_a bytes)
-        emit(0xd37ef463); // lsl x3, x3, #2 (ld_b bytes)
+        emit(0xd37ef442); // lsl x2, x2, #2 (ld_a in Bytes umwandeln)
+        emit(0xd37ef463); // lsl x3, x3, #2 (ld_b in Bytes umwandeln)
 
         if (trans_b == 0) {
-            emit(encode_mov_k_x(9, n));     // mov x9, n
+            emit(encode_mov_k_x(9, n));       // mov x9, n
             int outer_start = idx;
             emit(encode_mov_k_x(10, m / 16)); // mov x10, m / 16
             emit(0xaa0003e4);                 // mov x4, x0
             emit(0xaa0103e5);                 // mov x5, x1
             
             int inner_start = idx;
-            emit(0xa540a080);                 // ld1w {z0.s}, p0/z, [x4]
-            emit(0xe540e0a0);                 // st1w {z0.s}, p0, [x5]
-            emit(0x91010084);                 // add x4, x4, #64
-            emit(0x910100a5);                 // add x5, x5, #64
-            emit(0xf100054a);                 // subs x10, x10, #1
+            emit(0xa540a080);                    // ld1w {z0.s}, p0/z, [x4]
+            emit(0xe540e0a0);                    // st1w {z0.s}, p0, [x5]
+            emit(0x91010084);                    // add x4, x4, #64
+            emit(0x910100a5);                    // add x5, x5, #64
+            emit(0xf100054a);                    // subs x10, x10, #1
             emit(encode_b_ne(inner_start, idx));
             
-            emit(0x8b020000);                 // add x0, x0, x2
-            emit(0x8b030021);                 // add x1, x1, x3
-            emit(0xf1000529);                 // subs x9, x9, #1
+            emit(0x8b020000);                    // add x0, x0, x2
+            emit(0x8b030021);                    // add x1, x1, x3
+            emit(0xf1000529);                    // subs x9, x9, #1
             emit(encode_b_ne(outer_start, idx));
         } else {
-            // Unary Permute identity not strictly required for non-trans_b tests right now,
-            // but we add it if needed later. Just fallback to return for now.
+            // Transponiertes Identity noch nicht zwingend für diese Benchmarks benötigt.
+            // Kann später durch Matrix-Transformationen via SME ergänzt werden.
         }
 
         emit(0xd503467f); // smstop
         emit(0xd65f03c0); // ret
     }
     else if (ptype == ptype_t::relu) {
-        // x0 = a, x1 = b, x2 = ld_a, x3 = ld_b
+        // Register-Layout: x0 = a, x1 = b, x2 = ld_a, x3 = ld_b
         emit(0xd503437f); // smstart sm
         emit(0x2598e120); // ptrue p0.s, vl16
         emit(0x25b8c01f); // mov z31.s, #0.0
@@ -114,24 +110,24 @@ Unary::error_t Unary::generate(uint32_t m, uint32_t n, uint32_t trans_b, dtype_t
         emit(0xd37ef463); // lsl x3, x3, #2
 
         if (trans_b == 0) {
-            emit(encode_mov_k_x(9, n));     // mov x9, n
+            emit(encode_mov_k_x(9, n));       // mov x9, n
             int outer_start = idx;
             emit(encode_mov_k_x(10, m / 16)); // mov x10, m / 16
             emit(0xaa0003e4);                 // mov x4, x0
             emit(0xaa0103e5);                 // mov x5, x1
             
             int inner_start = idx;
-            emit(0xa540a080);                 // ld1w {z0.s}, p0/z, [x4]
-            emit(0x658683e0);                 // fmax z0.s, p0/m, z0.s, z31.s
-            emit(0xe540e0a0);                 // st1w {z0.s}, p0, [x5]
-            emit(0x91010084);                 // add x4, x4, #64
-            emit(0x910100a5);                 // add x5, x5, #64
-            emit(0xf100054a);                 // subs x10, x10, #1
+            emit(0xa540a080);                    // ld1w {z0.s}, p0/z, [x4]
+            emit(0x658683e0);                    // fmax z0.s, p0/m, z0.s, z31.s
+            emit(0xe540e0a0);                    // st1w {z0.s}, p0, [x5]
+            emit(0x91010084);                    // add x4, x4, #64
+            emit(0x910100a5);                    // add x5, x5, #64
+            emit(0xf100054a);                    // subs x10, x10, #1
             emit(encode_b_ne(inner_start, idx));
             
-            emit(0x8b020000);                 // add x0, x0, x2
-            emit(0x8b030021);                 // add x1, x1, x3
-            emit(0xf1000529);                 // subs x9, x9, #1
+            emit(0x8b020000);                    // add x0, x0, x2
+            emit(0x8b030021);                    // add x1, x1, x3
+            emit(0xf1000529);                    // subs x9, x9, #1
             emit(encode_b_ne(outer_start, idx));
         }
 

@@ -10,32 +10,32 @@ namespace mini_jit {
 
 class mini_jit::Unary {
   public:
-    /// data type
+    /// Datentyp der Matrizen
     enum class dtype_t : uint32_t {
       fp32 = 0,
       fp64 = 1
     };
 
-    /// primitive type
+    /// Typ der unären Operation
     enum class ptype_t : uint32_t {
       zero     = 0,
       identity = 1,
       relu     = 2     
     };
 
-    /// error codes
+    /// Fehlercodes
     enum class error_t : int32_t {
       success = 0
     };
 
     /**
-     * @brief Generate a kernel for a unary primitive.
-     * @param m       Number of rows in A and B.
-     * @param n       Number of columns in A and B.
-     * @param trans_b 0 if B is stored in column-major order, 1 if B is stored in row-major order.
-     * @param dtype   Data type of the matrices.
-     * @param ptype   Primitive type.
-     * @return error_t::success on success, another error_t value otherwise.
+     * @brief Generiert einen Kernel für eine unäre Matrixoperation.
+     * @param m       Anzahl der Zeilen in A und B.
+     * @param n       Anzahl der Spalten in A und B.
+     * @param trans_b 0 wenn B formatmäßig spaltenbasiert vorliegt (column-major), 1 wenn zeilenbasiert.
+     * @param dtype   Datentyp der Matrizen.
+     * @param ptype   Gewünschte Operation (zero, identity, relu).
+     * @return error_t::success bei Erfolg, ansonsten ein entsprechender Fehlercode.
      **/
     error_t generate( uint32_t m,
                       uint32_t n,
@@ -44,11 +44,11 @@ class mini_jit::Unary {
                       ptype_t  ptype );
 
     /*
-     * A kernel is a function that takes the following parameters:
-     * - a:    Pointer to column-major matrix A, nullptr if zero kernel.
-     * - b:    Pointer to matrix B.
-     * - ld_a: Leading dimension of A.
-     * - ld_b: Leading dimension of B.
+     * Ein Kernel ist eine Funktion, die folgende Parameter entgegennimmt:
+     * - a:    Pointer auf Matrix A (nullptr, falls "zero" Kernel).
+     * - b:    Pointer auf Matrix B.
+     * - ld_a: Leading Dimension von A.
+     * - ld_b: Leading Dimension von B.
      */
     using kernel_t = void (*)( void    const * a,
                                void          * b,
@@ -56,8 +56,8 @@ class mini_jit::Unary {
                                int64_t         ld_b );
 
     /**
-     * @brief Get the generated kernel: B := op(A).
-     * @return pointer to the generated kernel.
+     * @brief Liefert den generierten Kernel: B := op(A).
+     * @return Zeiger auf die ausführbare Machine-Code Funktion.
      **/
     kernel_t get_kernel() const;
 
