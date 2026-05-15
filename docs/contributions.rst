@@ -33,8 +33,8 @@ Week 2
 
   - ``abc -> cba``
 
-Week 3
-------
+Week 3-4
+--------
 
 **Teammitglied 1: Justin Bergmann**
 
@@ -46,3 +46,18 @@ Week 3
 
 * Implementierung der SSVE Unary-Kernel
 * Implementierung der Unit-Tests für Kernel-Funktionen
+
+Week 5
+------
+
+**Teammitglied 1: Justin Bergmann**
+
+* Implementierung der JIT-Klasse (Speicherallokation via mmap und Executable-Rechte via mprotect)
+* Umsetzung der Benchmark-Logik (10-Run Average)
+* Analyse und Bug-Fix des Callee-Saved Register-Resets
+
+**Teammitglied 2: Julian Müller**
+
+* Übersetzung der ARM Assembly-Opcodes in Hexadezimal-Maschinencode
+* Dynamische Berechnung der relativen Branch-Offsets für die Schleifen im Unary-Kernel
+* Umbau des GEMM-Kernels auf das C++ Emit-Muster
