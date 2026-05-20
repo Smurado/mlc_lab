@@ -83,16 +83,34 @@ __attribute__((optimize("O0"))) void benchmark(uint32_t m, uint32_t n, Unary::pt
     double total_gib_per_sec = 0.0;
     
     for (int outer = 0; outer < outer_runs; ++outer) {
-        // Cache anwärmen (Warmup)
-        for (int i = 0; i < 100; ++i) {
-            kernel(A.data(), B.data(), m, m);
-        }
+// 1. Sicheren Wrapper definieren
+auto safe_kernel = [&](const float* a, float* b, uint32_t arg_m, uint32_t arg_n) {
+    register const float* x0 asm("x0") = a;
+    register float* x1 asm("x1") = b;
+    register uint32_t x2 asm("x2") = arg_m;
+    register uint32_t x3 asm("x3") = arg_n;
+    register Unary::kernel_t x4 asm("x4") = kernel;
 
-        auto start = std::chrono::high_resolution_clock::now();
-        for (int i = 0; i < num_runs; ++i) {
-            kernel(A.data(), B.data(), m, m);
-        }
-        auto end = std::chrono::high_resolution_clock::now();
+    asm volatile(
+        "blr %4\n" // Rufe den Kernel auf
+        : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x3) // In/Out Argumente
+        : "r"(x4) // Funktionspointer
+        // Hier ist die Magie: Wir teilen dem Compiler mit, dass der Kernel
+        // die callee-saved Register v8-v15 unwiderruflich zerstört!
+        : "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "memory", "cc"
+    );
+};
+
+// ... Cache anwärmen ...
+for (int i = 0; i < 100; ++i) {
+    safe_kernel(A.data(), B.data(), m, m); // safe_kernel statt kernel() nutzen!
+}
+
+auto start = std::chrono::high_resolution_clock::now();
+for (int i = 0; i < num_runs; ++i) {
+    safe_kernel(A.data(), B.data(), m, m); // safe_kernel statt kernel() nutzen!
+}
+auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> diff = end - start;
         
         // Durchsatz in GiB/s berechnen
@@ -112,7 +130,7 @@ __attribute__((optimize("O0"))) void benchmark(uint32_t m, uint32_t n, Unary::pt
     
     std::cout << std::left << std::setw(10) << name 
               << " (" << std::setw(3) << m << "x" << std::setw(3) << n << "): " 
-              << std::fixed << std::setprecision(2) << avg_gib_per_sec << " GiB/s" 
+              << std::fixed << std::setprecision(5) << avg_gib_per_sec << " GiB/s" 
               << (benchmark_mode ? " (Avg of 10)" : "") << std::endl;
 }
 
