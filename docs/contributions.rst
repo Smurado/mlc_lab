@@ -61,3 +61,16 @@ Week 5
 * Übersetzung der ARM Assembly-Opcodes in Hexadezimal-Maschinencode
 * Dynamische Berechnung der relativen Branch-Offsets für die Schleifen im Unary-Kernel
 * Umbau des GEMM-Kernels auf das C++ Emit-Muster
+
+Week 6
+------
+
+**Teammitglied 1: Justin Bergmann**
+
+* Implementierung der dynamischen ``generate``Funktion für die SME GEMM-Primitive (Unterstützung für variable Parameter M, N, K).
+* Entwicklung und Auswertung der Test- und Benchmarking-Logik über 27 Settings (Ausgabe der Performance in GFLOPS).
+
+**Teammitglied 2: Julian Müller**
+
+* Implementierung der flexiblen SSVE Code-Generation (``generate``) für die Unary-Primitive (``zero``, ``identity``, ``relu``).
+* Automatisierung der Unary-Tests und Bandbreiten-Benchmarks über 9 verschiedene Settings (Ausgabe in GiB/s).
