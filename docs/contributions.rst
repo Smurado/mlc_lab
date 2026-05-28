@@ -74,3 +74,18 @@ Week 6
 
 * Implementierung der flexiblen SSVE Code-Generation (``generate``) für die Unary-Primitive (``zero``, ``identity``, ``relu``).
 * Automatisierung der Unary-Tests und Bandbreiten-Benchmarks über 9 verschiedene Settings (Ausgabe in GiB/s).
+
+Week 7
+------
+
+**Teammitglied 1: Justin Bergmann**
+
+* Verfassen der ausführlichen wöchentlichen Dokumentation zu Architektur, Optimierungen und dem Bugfix der TEIR-Spezifikation.
+* Entwicklung und Automatisierung der umfassenden Test-Suite (inklusive der Phase-1-Korrektheitstests mit Random-Inputs und der Sanity-Checks in Phase 2).
+* Validierung der generierten JIT-Kernel auf korrekte Verarbeitung der Strides und mathematische Präzision (Abgleich gegen naive Referenz-Implementierungen).
+
+**Teammitglied 2: Julian Müller**
+
+* Vollständige Implementierung der ``main.cpp`` als zentralem Laufzeit-Hub für unseren TEIR-Compiler.
+* Integration von Modulen wie dem AST-Aufbau, Parser und JIT-Codegenerator innerhalb der Hauptanwendung.
+* Bereitstellung der Ausführungs- und Benchmark-Logik in C++ (inkl. Thread-Sweeps, Allokation der Tensoren und Performance-Logging in GFLOPS/GB/s).

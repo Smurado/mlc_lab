@@ -9,17 +9,27 @@ LDFLAGS     := -L$(BREW_PREFIX)/opt/libomp/lib -lomp -ldl
 
 # Target configurations
 TARGET := teir_runtime
-SRCS   := main.cpp
+SRCS   := main.cpp teir_parser.cpp teir_compiler.cpp
+OBJS   := $(SRCS:.cpp=.o)
 
-.PHONY: all clean run
+.PHONY: all clean run test bench
 
 all: $(TARGET)
 
-$(TARGET): $(SRCS)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SRCS) -o $(TARGET) $(LDFLAGS)
+$(TARGET): $(OBJS)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(OBJS) -o $(TARGET) $(LDFLAGS)
+
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 run: all
 	./$(TARGET)
 
+test: all
+	./$(TARGET) --tests-only
+
+bench: all
+	./$(TARGET) --bench-only
+
 clean:
-	rm -f $(TARGET) teir_jit_*.cpp teir_jit_*.so
+	rm -f $(TARGET) $(OBJS) teir_jit_*.cpp teir_jit_*.so

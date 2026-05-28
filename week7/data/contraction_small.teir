@@ -1,0 +1,20 @@
+teir @contraction_small {
+  tensor %in0 : f32
+  tensor %in1 : f32
+  tensor %out : f32
+
+  axis @b extent 8  strides { in0: 4096, in1: 4096, out: 4096 }
+  axis @m extent 32 strides { in0: 128,  out: 128 }
+  axis @n extent 32 strides { in1: 4,    out: 4   }
+  axis @k extent 32 strides { in0: 4,    in1: 128 }
+
+  primitive @zero : Zero        axes { M: [@m], N: [@n]          } metadata { data_type: f32 }
+  primitive @gemm : Contraction axes { M: [@m], N: [@n], K: [@k] } metadata { data_type: f32 }
+
+  schedule {
+    roots [@iter_b]
+    iter @iter_b axis @b policy parallel children [@inv_zero, @inv_gemm]
+    invoke @inv_zero primitive @zero
+    invoke @inv_gemm primitive @gemm
+  }
+}

@@ -1,65 +1,18 @@
-#include <iostream>
-#include <vector>
-#include <string>
-#include <unordered_map>
-#include <memory>
-#include <functional>
+// Einstiegspunkt: erst Korrektheits-Tests auf kleinen Problemen
+// gegen eine naive Referenz, danach die grossen Benchmarks.
+#include "include/teir.h"
+#include "include/teir_parser.h"
+#include "include/teir_compiler.h"
+
 #include <algorithm>
-#include <limits>
-#include <fstream>
-#include <sstream>
-#include <cstdlib>
-#include <dlfcn.h>
-#include <cassert>
 #include <chrono>
+#include <cmath>
+#include <functional>
+#include <iostream>
+#include <limits>
+#include <random>
+#include <vector>
 #include <omp.h>
-
-// ============================================================================
-// 1. TEIR Abstract Syntax Tree (AST) & Representation
-// ============================================================================
-
-struct Axis {
-    std::string name;
-    int extent;
-    std::unordered_map<std::string, int> strides; 
-};
-
-struct Primitive {
-    std::string name;
-    std::string kind; 
-    std::unordered_map<std::string, std::vector<std::string>> axes_map;
-};
-
-enum class NodeType { Iter, Invoke };
-
-struct ScheduleNode {
-    NodeType type;
-    std::string name;
-    virtual ~ScheduleNode() = default;
-};
-
-struct InvokeNode : public ScheduleNode {
-    std::string primitive;
-    std::string guard; 
-    InvokeNode() { type = NodeType::Invoke; }
-};
-
-struct IterNode : public ScheduleNode {
-    std::string axis;
-    std::string policy; 
-    std::vector<std::shared_ptr<ScheduleNode>> children;
-    IterNode() { type = NodeType::Iter; }
-};
-
-struct TEIRProgram {
-    std::string name;
-    std::vector<std::string> tensors; 
-    std::unordered_map<std::string, Axis> axes;
-    std::unordered_map<std::string, Primitive> primitives;
-    std::vector<std::shared_ptr<ScheduleNode>> roots;
-};
-
-using TEIRKernelPtr = void(*)(void**);
 
 struct BenchmarkResult {
     double avg_ms;
@@ -72,7 +25,7 @@ static BenchmarkResult benchmark_kernel(TEIRKernelPtr kernel, void** args, int i
     if (!kernel || iterations <= 0) return {0.0, 0.0, 0.0};
 
     if (reset) reset();
-    kernel(args); 
+    kernel(args); // Warmup
 
     std::vector<double> run_times;
     run_times.reserve(iterations);
@@ -99,391 +52,237 @@ static BenchmarkResult benchmark_kernel(TEIRKernelPtr kernel, void** args, int i
     return { total_ms / iterations, min_ms, median_ms };
 }
 
-// ============================================================================
-// 2. Just-In-Time Code Generator & Compiler
-// ============================================================================
-
-class TEIRCompiler {
-private:
-    TEIRProgram prog;
-    std::stringstream src;
-    int indent_level = 0;
-
-    void emit(const std::string& line) {
-        src << std::string(indent_level * 4, ' ') << line << "\n";
+// Verifiziert nur die durch die Strides logisch adressierten Output-Elemente
+// (sonst werden Padding-Holes im Buffer als FAIL gemeldet).
+static bool verify_output(const TEIRProgram& prog, const std::string& tensor,
+                          const std::vector<float>& buf, float expected,
+                          const std::string& name) {
+    std::vector<const Axis*> active;
+    for (auto const& [n, ax] : prog.axes) {
+        (void)n;
+        auto it = ax.strides.find(tensor);
+        if (it != ax.strides.end() && it->second != 0) active.push_back(&ax);
+    }
+    if (active.empty()) {
+        std::cout << "   [verify " << name << "] no addressable axes on tensor '" << tensor << "' => SKIP\n";
+        return false;
     }
 
-    std::string get_offset_expr(const std::string& tensor_name, 
-                                const std::unordered_map<std::string, std::string>& active_loops) {
-        std::vector<std::string> terms;
-        for (auto const& [ax_name, loop_var] : active_loops) {
-            auto it = prog.axes.find(ax_name);
-            if (it != prog.axes.end()) {
-                auto stride_it = it->second.strides.find(tensor_name);
-                if (stride_it != it->second.strides.end() && stride_it->second != 0) {
-                    terms.push_back("((long long)" + loop_var + " * " + std::to_string(stride_it->second) + ")");
+    float tol = std::max(1e-4f, std::abs(expected) * 1e-3f);
+    float max_err = 0.0f;
+    size_t worst_flat = 0;
+    float worst_val = expected;
+    long long visited = 0;
+
+    std::vector<int> idx(active.size(), 0);
+    while (true) {
+        long long byte_off = 0;
+        for (size_t i = 0; i < active.size(); ++i) {
+            byte_off += (long long)idx[i] * active[i]->strides.at(tensor);
+        }
+        size_t flat = (size_t)(byte_off / (long long)sizeof(float));
+        if (flat < buf.size()) {
+            float err = std::abs(buf[flat] - expected);
+            if (err > max_err) { max_err = err; worst_flat = flat; worst_val = buf[flat]; }
+            ++visited;
+        }
+        size_t carry = 0;
+        while (carry < active.size() && ++idx[carry] >= active[carry]->extent) {
+            idx[carry] = 0; ++carry;
+        }
+        if (carry == active.size()) break;
+    }
+
+    bool ok = max_err <= tol;
+    std::cout << "   [verify " << name << "] expected=" << expected
+              << " max_abs_err=" << max_err
+              << " (worst flat idx " << worst_flat << " = " << worst_val << ")"
+              << " over " << visited << " elements"
+              << " => " << (ok ? "PASS" : "FAIL") << "\n";
+    return ok;
+}
+
+// Vergleicht zwei Buffer elementweise. tol skaliert mit der erwarteten Groesse,
+// damit ein laengerer K-Reduktionspfad nicht falsch-positiv FAILt.
+static bool compare_buffers(const std::vector<float>& got, const std::vector<float>& ref,
+                            float tol, const std::string& name) {
+    float max_err = 0.0f;
+    size_t worst = 0;
+    for (size_t i = 0; i < ref.size(); ++i) {
+        float e = std::abs(got[i] - ref[i]);
+        if (e > max_err) { max_err = e; worst = i; }
+    }
+    bool ok = max_err <= tol;
+    std::cout << "   [correctness " << name << "] max_abs_err=" << max_err
+              << " (worst idx " << worst << ": got=" << got[worst]
+              << " ref=" << ref[worst] << ")"
+              << " tol=" << tol
+              << " => " << (ok ? "PASS" : "FAIL") << "\n";
+    return ok;
+}
+
+// Korrektheits-Test 1: 64x64 Matmul mit Zufallsdaten gegen naive Referenz.
+// Triggert den NEON-Microkernel; deckt M/N/K-Vertauschungen auf, die der
+// All-Einsen-Benchmarktest nicht sieht.
+static bool correctness_matmul_small() {
+    TEIRProgram prog = load_teir("data/matmul_small.teir");
+    TEIRCompiler compiler(prog);
+    TEIRKernelPtr kernel = compiler.compile();
+    if (!kernel) { std::cout << "   [correctness matmul_small] compile failed\n"; return false; }
+
+    constexpr int M = 64, N = 64, K = 64;
+    std::vector<float> a(M * K), b(K * N), out(M * N, 0.0f), ref(M * N, 0.0f);
+
+    std::mt19937 rng(12345);
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+    for (auto& x : a) x = dist(rng);
+    for (auto& x : b) x = dist(rng);
+
+    // Referenz: ijk row-major, unabhaengig vom JIT.
+    for (int m = 0; m < M; ++m) {
+        for (int n = 0; n < N; ++n) {
+            float s = 0.0f;
+            for (int k = 0; k < K; ++k) s += a[m * K + k] * b[k * N + n];
+            ref[m * N + n] = s;
+        }
+    }
+
+    void* args[] = { a.data(), b.data(), out.data() };
+    kernel(args);
+
+    // Tol relativ zur Reduktionslaenge K (rund 64 FMAs in [-1,1]).
+    return compare_buffers(out, ref, 1e-3f, "matmul_small");
+}
+
+// Korrektheits-Test 2: Batch-Matmul (B=8, 32x32x32). Prueft, dass die
+// aeussere parallel-Achse korrekt vor das Zero+Gemm-Paar gezogen wird.
+static bool correctness_contraction_small() {
+    TEIRProgram prog = load_teir("data/contraction_small.teir");
+    TEIRCompiler compiler(prog);
+    TEIRKernelPtr kernel = compiler.compile();
+    if (!kernel) { std::cout << "   [correctness contraction_small] compile failed\n"; return false; }
+
+    constexpr int B = 8, M = 32, N = 32, K = 32;
+    std::vector<float> a(B * M * K), b(B * K * N), out(B * M * N, 0.0f), ref(B * M * N, 0.0f);
+
+    std::mt19937 rng(67890);
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+    for (auto& x : a) x = dist(rng);
+    for (auto& x : b) x = dist(rng);
+
+    for (int bi = 0; bi < B; ++bi) {
+        for (int m = 0; m < M; ++m) {
+            for (int n = 0; n < N; ++n) {
+                float s = 0.0f;
+                for (int k = 0; k < K; ++k) {
+                    s += a[bi * M * K + m * K + k] * b[bi * K * N + k * N + n];
                 }
-            }
-        }
-        if (terms.empty()) return "0";
-        std::string expr = terms[0];
-        for (size_t i = 1; i < terms.size(); ++i) {
-            expr += " + " + terms[i];
-        }
-        return expr;
-    }
-
-    void emit_kernel_body(const Primitive& prim, const std::unordered_map<std::string, std::string>& all_loops) {
-        if (prim.kind == "Zero") {
-            std::string out_offset = get_offset_expr("out", all_loops);
-            emit("*(float*)((char*)out + " + out_offset + ") = 0.0f;");
-        } 
-        else if (prim.kind == "Contraction") {
-            std::string in0_offset = get_offset_expr("in0", all_loops);
-            std::string in1_offset = get_offset_expr("in1", all_loops);
-            std::string out_offset = get_offset_expr("out", all_loops);
-            emit("*(float*)((char*)out + " + out_offset + ") += "
-                 "(*(float*)((char*)in0 + " + in0_offset + ")) * (*(float*)((char*)in1 + " + in1_offset + "));");
-        } 
-        else if (prim.kind == "Copy") {
-            std::string in_offset = get_offset_expr("in", all_loops);
-            std::string out_offset = get_offset_expr("out", all_loops);
-            emit("*(float*)((char*)out + " + out_offset + ") = *(float*)((char*)in + " + in_offset + ");");
-        }
-    }
-
-    void lower_primitive(const Primitive& prim, std::unordered_map<std::string, std::string> active_loops) {
-        std::vector<std::string> prim_axes;
-        for (auto const& [key, list] : prim.axes_map) {
-            for (auto const& ax : list) {
-                std::string clean_ax = (ax[0] == '@') ? ax.substr(1) : ax;
-                if (std::find(prim_axes.begin(), prim_axes.end(), clean_ax) == prim_axes.end()) {
-                    prim_axes.push_back(clean_ax);
-                }
-            }
-        }
-
-        auto emit_inner_loops = [&](auto& self, size_t depth) -> void {
-            if (depth == prim_axes.size()) {
-                emit_kernel_body(prim, active_loops);
-                return;
-            }
-            std::string ax_name = prim_axes[depth];
-            
-            // Falls die Achse bereits durch eine äußere Schleife im Schedule kontrolliert wird, 
-            // dürfen wir hier KEINE neue Schleife generieren! Sonst gibt es Race Conditions.
-            if (active_loops.find(ax_name) != active_loops.end()) {
-                self(self, depth + 1);
-            } else {
-                int extent = prog.axes[ax_name].extent;
-                std::string loop_var = "i_" + ax_name;
-                active_loops[ax_name] = loop_var;
-
-                emit("for (int " + loop_var + " = 0; " + loop_var + " < " + std::to_string(extent) + "; ++" + loop_var + ") {");
-                indent_level++;
-                self(self, depth + 1);
-                indent_level--;
-                emit("}");
-            }
-        };
-
-        emit_inner_loops(emit_inner_loops, 0);
-    }
-
-void lower_node(const std::shared_ptr<ScheduleNode>& node, std::unordered_map<std::string, std::string> active_loops) {
-        if (node->type == NodeType::Iter) {
-            auto iter = std::static_pointer_cast<IterNode>(node);
-            Axis axis_info = prog.axes[iter->axis];
-            std::string loop_var = "i_" + axis_info.name;
-
-            // FIX: Sämtlichen fehlerhaften Pseudocode entfernt
-            if (iter->policy == "parallel") {
-                emit("#pragma omp parallel for");
-            }
-            emit("for (int " + loop_var + " = 0; " + loop_var + " < " + std::to_string(axis_info.extent) + "; ++" + loop_var + ") {");
-            indent_level++;
-
-            active_loops[axis_info.name] = loop_var;
-            for (auto const& child : iter->children) {
-                lower_node(child, active_loops);
-            }
-
-            indent_level--;
-            emit("}");
-        } 
-        else if (node->type == NodeType::Invoke) {
-            auto inv = std::static_pointer_cast<InvokeNode>(node);
-            bool has_guard = false;
-
-            if (!inv->guard.empty() && inv->guard.find("first") != std::string::npos) {
-                size_t start = inv->guard.find("@") + 1;
-                size_t end = inv->guard.find(")");
-                std::string g_axis = inv->guard.substr(start, end - start);
-                emit("if (i_" + g_axis + " == 0) {");
-                indent_level++;
-                has_guard = true;
-            }
-
-            lower_primitive(prog.primitives[inv->primitive], active_loops);
-
-            if (has_guard) {
-                indent_level--;
-                emit("}");
+                ref[bi * M * N + m * N + n] = s;
             }
         }
     }
 
-public:
-    explicit TEIRCompiler(TEIRProgram p) : prog(std::move(p)) {}
+    void* args[] = { a.data(), b.data(), out.data() };
+    kernel(args);
 
-    std::string generate_cpp_source() {
-        src.str(""); src.clear();
-        emit("#include <omp.h>");
-        emit("#include <iostream>");
-        emit("\nextern \"C\" {");
-        
-        std::string sig = "void kernel_" + prog.name + "(void** args) {";
-        emit(sig);
-        indent_level++;
-
-        for (size_t i = 0; i < prog.tensors.size(); ++i) {
-            emit("float* " + prog.tensors[i] + " = (float*)args[" + std::to_string(i) + "];");
-        }
-
-        std::unordered_map<std::string, std::string> active_loops;
-        for (auto const& root : prog.roots) {
-            lower_node(root, active_loops);
-        }
-
-        indent_level--;
-        emit("}");
-        emit("}");
-        return src.str();
-    }
-
-    TEIRKernelPtr compile() {
-        std::string source = generate_cpp_source();
-        std::string cpp_filename = "teir_jit_" + prog.name + ".cpp";
-        std::string so_filename = "./teir_jit_" + prog.name + ".so";
-
-        std::ofstream out(cpp_filename);
-        out << source;
-        out.close();
-
-        // Dein clang++ Aufruf
-        std::string cmd = "clang++ -O3 -Xpreprocessor -fopenmp -shared -fPIC "
-                          "-I/opt/homebrew/opt/libomp/include -L/opt/homebrew/opt/libomp/lib -lomp "
-                          + cpp_filename + " -o " + so_filename;
-                          
-        int ret = std::system(cmd.c_str());
-        if (ret != 0) {
-            std::cerr << "Compilation failed for program: " << prog.name << "\n";
-            return nullptr;
-        }
-
-        void* handle = dlopen(so_filename.c_str(), RTLD_NOW);
-        if (!handle) {
-            std::cerr << "Failed to load DSO: " << dlerror() << "\n";
-            return nullptr;
-        }
-
-        std::string sym_name = "kernel_" + prog.name;
-        auto func = (TEIRKernelPtr)dlsym(handle, sym_name.c_str());
-        if (!func) {
-            std::cerr << "Failed to locate entry point: " << dlerror() << "\n";
-            return nullptr;
-        }
-
-        return func;
-    }
-};
-
-// ============================================================================
-// 3. Mathematisch korrekte Repräsentationen der .teir Spezifikationen
-// ============================================================================
-
-TEIRProgram create_transposition_program() {
-    TEIRProgram prog;
-    prog.name = "transposition";
-    prog.tensors = {"in", "out"};
-
-    prog.axes["a"] = {"a", 96, {{"in", 786432}, {"out", 192}}};
-    prog.axes["b"] = {"b", 128, {{"in", 6144}, {"out", 17664}}};
-    prog.axes["c"] = {"c", 48, {{"in", 128}, {"out", 4}}};
-    prog.axes["d"] = {"d", 32, {{"in", 4}, {"out", 2260992}}};
-
-    Primitive copy_prim;
-    copy_prim.name = "copy"; copy_prim.kind = "Copy";
-    copy_prim.axes_map["M"] = {"@c"}; copy_prim.axes_map["N"] = {"@d"};
-    prog.primitives["copy"] = copy_prim;
-
-    // Transposition profitiert massiv von Parallelisierung auf Achse A
-    auto iter_a = std::make_shared<IterNode>();
-    iter_a->axis = "a"; iter_a->policy = "parallel"; // HIER PARALLELISIERT!
-    
-    auto iter_b = std::make_shared<IterNode>();
-    iter_b->axis = "b"; iter_b->policy = "sequential";
-    
-    auto inv_copy = std::make_shared<InvokeNode>();
-    inv_copy->primitive = "copy";
-
-    iter_b->children.push_back(inv_copy);
-    iter_a->children.push_back(iter_b);
-    prog.roots.push_back(iter_a);
-
-    return prog;
+    return compare_buffers(out, ref, 1e-3f, "contraction_small");
 }
 
-TEIRProgram create_matmul_program() {
-    TEIRProgram prog;
-    prog.name = "matmul";
-    prog.tensors = {"in0", "in1", "out"};
+int main(int argc, char** argv) {
+    // CLI: --tests-only ueberspringt die grossen Benchmarks,
+    //      --bench-only ueberspringt die Korrektheits-Tests.
+    bool run_tests = true, run_bench = true;
+    for (int i = 1; i < argc; ++i) {
+        std::string a = argv[i];
+        if      (a == "--tests-only") run_bench = false;
+        else if (a == "--bench-only") run_tests = false;
+        else { std::cerr << "unknown option: " << a << "\n"; return 2; }
+    }
 
-    prog.axes["m0"] = {"m0", 256, {{"in0", 1048576}, {"out", 1048576}}};
-    prog.axes["m1"] = {"m1", 32,  {{"in0", 2048},    {"out", 256}}};
-    prog.axes["n0"] = {"n0", 128, {{"in1", 131072},  {"out", 8192}}};
-    prog.axes["n1"] = {"n1", 64,  {{"in1", 4},       {"out", 4}}};
-    prog.axes["k0"] = {"k0", 16,  {{"in0", 65536},   {"in1", 16777216}}};
-    prog.axes["k1"] = {"k1", 512, {{"in0", 4},       {"in1", 256}}};
-
-    Primitive zero_prim;
-    zero_prim.name = "zero"; zero_prim.kind = "Zero";
-    zero_prim.axes_map["M"] = {"@m1"}; zero_prim.axes_map["N"] = {"@n1"};
-    prog.primitives["zero"] = zero_prim;
-
-    Primitive gemm_prim;
-    gemm_prim.name = "gemm"; gemm_prim.kind = "Contraction";
-    gemm_prim.axes_map["M"] = {"@m1"}; gemm_prim.axes_map["N"] = {"@n1"}; gemm_prim.axes_map["K"] = {"@k1"};
-    prog.primitives["gemm"] = gemm_prim;
-
-    // Lineare Auflösung der Matmul-Schnittstelle ohne False Sharing
-    auto iter_m0 = std::make_shared<IterNode>();
-    iter_m0->axis = "m0"; iter_m0->policy = "parallel"; 
-
-    auto iter_n0 = std::make_shared<IterNode>();
-    iter_n0->axis = "n0"; iter_n0->policy = "parallel"; // Beide Raumachsen parallelisieren!
-
-    auto iter_k0 = std::make_shared<IterNode>();
-    iter_k0->axis = "k0"; iter_k0->policy = "sequential"; 
-
-    auto inv_zero = std::make_shared<InvokeNode>();
-    inv_zero->primitive = "zero"; 
-    inv_zero->guard = "first(@k0)"; 
-
-    auto inv_gemm = std::make_shared<InvokeNode>();
-    inv_gemm->primitive = "gemm";
-
-    iter_k0->children.push_back(inv_zero);
-    iter_k0->children.push_back(inv_gemm);
-    iter_n0->children.push_back(iter_k0);
-    iter_m0->children.push_back(iter_n0);
-    
-    prog.roots.push_back(iter_m0); 
-
-    return prog;
-}
-
-TEIRProgram create_contraction_program() {
-    TEIRProgram prog;
-    prog.name = "contraction";
-    prog.tensors = {"in0", "in1", "out"};
-
-    prog.axes["p"] = {"p", 128, {{"in0", 3145728}, {"out", 2359296}}};
-    prog.axes["q"] = {"q", 96,  {{"in0", 32768},   {"out", 24576}}};
-    prog.axes["r"] = {"r", 96,  {{"in1", 65536},   {"out", 256}}};
-    prog.axes["s"] = {"s", 64,  {{"in1", 4},       {"out", 4}}};
-    prog.axes["t"] = {"t", 32,  {{"in0", 1024},    {"in1", 6291456}}};
-    prog.axes["u"] = {"u", 256, {{"in0", 4},       {"in1", 256}}};
-
-    Primitive zero_prim;
-    zero_prim.name = "zero"; zero_prim.kind = "Zero";
-    zero_prim.axes_map["M"] = {"@q"}; zero_prim.axes_map["N"] = {"@s"};
-    prog.primitives["zero"] = zero_prim;
-
-    Primitive gemm_prim;
-    gemm_prim.name = "gemm"; gemm_prim.kind = "Contraction";
-    gemm_prim.axes_map["M"] = {"@q"}; gemm_prim.axes_map["N"] = {"@s"}; gemm_prim.axes_map["K"] = {"@u"};
-    prog.primitives["gemm"] = gemm_prim;
-
-    auto iter_p = std::make_shared<IterNode>();
-    iter_p->axis = "p"; iter_p->policy = "parallel"; 
-
-    auto iter_r = std::make_shared<IterNode>();
-    iter_r->axis = "r"; iter_r->policy = "parallel"; 
-
-    auto iter_t = std::make_shared<IterNode>();
-    iter_t->axis = "t"; iter_t->policy = "sequential"; 
-
-    auto inv_zero = std::make_shared<InvokeNode>();
-    inv_zero->primitive = "zero"; 
-    inv_zero->guard = "first(@t)"; 
-
-    auto inv_gemm = std::make_shared<InvokeNode>();
-    inv_gemm->primitive = "gemm";
-
-    iter_t->children.push_back(inv_zero);
-    iter_t->children.push_back(inv_gemm);
-    iter_r->children.push_back(iter_t);
-    iter_p->children.push_back(iter_r);
-    
-    prog.roots.push_back(iter_p); 
-
-    return prog;
-}
-
-// ============================================================================
-// 4. Execution Routine
-// ============================================================================
-
-int main() {
     std::cout << "[TEIR Runtime System Initializing Evaluation Execution Backend]\n\n";
 
     int max_threads = omp_get_max_threads();
     std::vector<int> thread_counts = {4, 8, 10};
-
     if (thread_counts.back() != max_threads) {
         thread_counts.push_back(max_threads);
     }
 
     std::cout << "[OpenMP max threads] " << max_threads << "\n\n";
 
+    // Phase 1: kleine Korrektheits-Tests mit Zufallsdaten gegen naive Referenz.
+    // Laufen schnell und decken Bugs auf, die der All-Einsen-Sanity-Check spaeter
+    // nicht sehen wuerde (z.B. vertauschte M/N/K-Achsen im NEON-Kernel).
+    int correctness_pass = 0, correctness_total = 0;
+    if (run_tests) {
+        std::cout << "[Phase 1] Korrektheit auf kleinen Problemen\n";
+        ++correctness_total; if (correctness_matmul_small())      ++correctness_pass;
+        ++correctness_total; if (correctness_contraction_small()) ++correctness_pass;
+        std::cout << "\n";
+    }
+    if (run_bench) {
+        std::cout << "[Phase 2] Sanity-Check + Benchmark auf vollen Groessen\n";
+    }
+
+    // flops_per_call > 0 => GFLOPS; sonst falls bytes_per_call > 0 => GB/s.
     auto report = [&](const std::string& name, TEIRKernelPtr kernel, void** args, int iterations,
-                      const std::function<void()>& reset) {
+                      const std::function<void()>& reset, double flops_per_call, double bytes_per_call) {
         BenchmarkResult result = benchmark_kernel(kernel, args, iterations, reset);
-        std::cout << " -> Benchmark [" << name << "] (threads=" << omp_get_max_threads() << "): average "
+        std::cout << " -> Benchmark [" << name << "] (threads=" << omp_get_max_threads() << "): avg "
                   << result.avg_ms << " ms, median " << result.median_ms
-                  << " ms, best " << result.min_ms << " ms over "
-                  << iterations << " run(s).\n";
+                  << " ms, best " << result.min_ms << " ms";
+        if (flops_per_call > 0.0) {
+            double gflops_best   = flops_per_call / (result.min_ms    * 1e6);
+            double gflops_median = flops_per_call / (result.median_ms * 1e6);
+            std::cout << "  |  " << gflops_median << " GFLOPS (median), "
+                      << gflops_best << " GFLOPS (best)";
+        } else if (bytes_per_call > 0.0) {
+            double gbs_best   = bytes_per_call / (result.min_ms    * 1e6);
+            double gbs_median = bytes_per_call / (result.median_ms * 1e6);
+            std::cout << "  |  " << gbs_median << " GB/s (median), "
+                      << gbs_best << " GB/s (best)";
+        }
+        std::cout << "  [" << iterations << " runs]\n";
     };
 
     auto run_benchmark = [&](const std::string& name, TEIRKernelPtr kernel, void** args,
-                             const std::function<void()>& reset, int iterations) {
+                             const std::function<void()>& reset, int iterations,
+                             double flops_per_call, double bytes_per_call) {
         if (!kernel) return;
         std::cout << " -> " << name << " kernel ready. Sweeping thread counts...\n";
         for (int threads : thread_counts) {
             omp_set_num_threads(threads);
             std::cout << "   threads=" << threads << " ... " << std::flush;
-            report(name, kernel, args, iterations, reset);
+            report(name, kernel, args, iterations, reset, flops_per_call, bytes_per_call);
         }
         std::cout << "\n";
     };
 
+    int total_pass = 0, total_tests = 0;
+
+    if (run_bench) {
     // --- Test 1: Transposition ---
-    TEIRProgram trans_prog = create_transposition_program();
+    TEIRProgram trans_prog = load_teir("data/transposition.teir");
     TEIRCompiler compiler_trans(trans_prog);
     TEIRKernelPtr trans_kernel = compiler_trans.compile();
-    std::vector<float> input_tensor(96 * 128 * 48 * 32, 1.23f);
-    std::vector<float> output_tensor(32 * 128 * 96 * 48, 0.0f);
+    constexpr float TRANS_FILL = 1.23f;
+    std::vector<float> input_tensor(96LL * 128 * 48 * 32, TRANS_FILL);
+    std::vector<float> output_tensor(32LL * 128 * 96 * 48, 0.0f);
     void* trans_args[] = { input_tensor.data(), output_tensor.data() };
     auto reset_trans = [&]() { std::fill(output_tensor.begin(), output_tensor.end(), 0.0f); };
+    const double trans_bytes = 2.0 * 4.0 * (double)input_tensor.size();
 
-    if(trans_kernel) {
+    if (trans_kernel) {
         std::cout << " -> Compilation Successful: Transposition Kernel Pointer Ready.\n";
-        run_benchmark("transposition", trans_kernel, trans_args, reset_trans, 10);
+        reset_trans();
+        trans_kernel(trans_args);
+        ++total_tests;
+        if (verify_output(trans_prog, "out", output_tensor, TRANS_FILL, "transposition")) ++total_pass;
+        run_benchmark("transposition", trans_kernel, trans_args, reset_trans, 10,
+                      /*flops*/ 0.0, /*bytes*/ trans_bytes);
     }
 
     // --- Test 2: Matmul ---
-    TEIRProgram matmul_prog = create_matmul_program();
+    TEIRProgram matmul_prog = load_teir("data/matmul.teir");
     TEIRCompiler compiler_matmul(matmul_prog);
     TEIRKernelPtr matmul_kernel = compiler_matmul.compile();
     std::vector<float> in0_tensor_mm(256LL * 32 * 16 * 512, 1.0f);
@@ -491,25 +290,48 @@ int main() {
     std::vector<float> out_tensor_mm(256LL * 32 * 128 * 64, 0.0f);
     void* matmul_args[] = { in0_tensor_mm.data(), in1_tensor_mm.data(), out_tensor_mm.data() };
     auto reset_matmul = [&]() { std::fill(out_tensor_mm.begin(), out_tensor_mm.end(), 0.0f); };
+    const double matmul_flops = 2.0 * 8192.0 * 8192.0 * 8192.0;
+    const float matmul_expected = 16.0f * 512.0f;
 
-    if(matmul_kernel) {
-         std::cout << " -> Compilation Successful: Matmul Kernel Pointer Ready.\n";
-         run_benchmark("matmul", matmul_kernel, matmul_args, reset_matmul, 3);
+    if (matmul_kernel) {
+        std::cout << " -> Compilation Successful: Matmul Kernel Pointer Ready.\n";
+        reset_matmul();
+        matmul_kernel(matmul_args);
+        ++total_tests;
+        if (verify_output(matmul_prog, "out", out_tensor_mm, matmul_expected, "matmul")) ++total_pass;
+        run_benchmark("matmul", matmul_kernel, matmul_args, reset_matmul, 3,
+                      /*flops*/ matmul_flops, /*bytes*/ 0.0);
     }
 
     // --- Test 3: Contraction ---
-    TEIRProgram contraction_prog = create_contraction_program();
+    TEIRProgram contraction_prog = load_teir("data/contraction.teir");
     TEIRCompiler compiler_contract(contraction_prog);
     TEIRKernelPtr contract_kernel = compiler_contract.compile();
-    if(contract_kernel) {
-         std::cout << " -> Compilation Successful: Contraction Kernel Pointer Ready.\n";
-         std::vector<float> in0_tensor_co(128LL * 96 * 32 * 256, 1.0f);
-         std::vector<float> in1_tensor_co(32LL * 96 * 256 * 64, 1.0f);
-         std::vector<float> out_tensor_co(128LL * 96 * 96 * 64, 0.0f);
-         void* contraction_args[] = { in0_tensor_co.data(), in1_tensor_co.data(), out_tensor_co.data() };
-         auto reset_contraction = [&]() { std::fill(out_tensor_co.begin(), out_tensor_co.end(), 0.0f); };
-         run_benchmark("contraction", contract_kernel, contraction_args, reset_contraction, 3);
-    }
+    if (contract_kernel) {
+        std::cout << " -> Compilation Successful: Contraction Kernel Pointer Ready.\n";
+        std::vector<float> in0_tensor_co(128LL * 96 * 32 * 256, 1.0f);
+        std::vector<float> in1_tensor_co(32LL * 96 * 256 * 64, 1.0f);
+        std::vector<float> out_tensor_co(128LL * 96 * 96 * 64, 0.0f);
+        void* contraction_args[] = { in0_tensor_co.data(), in1_tensor_co.data(), out_tensor_co.data() };
+        auto reset_contraction = [&]() { std::fill(out_tensor_co.begin(), out_tensor_co.end(), 0.0f); };
 
-    return 0;
+        const double contract_flops =
+            2.0 * 128.0 * 96.0 * 96.0 * 64.0 * 32.0 * 256.0;
+        const float contract_expected = 32.0f * 256.0f;
+
+        reset_contraction();
+        contract_kernel(contraction_args);
+        ++total_tests;
+        if (verify_output(contraction_prog, "out", out_tensor_co, contract_expected, "contraction")) ++total_pass;
+        run_benchmark("contraction", contract_kernel, contraction_args, reset_contraction, 3,
+                      /*flops*/ contract_flops, /*bytes*/ 0.0);
+    }
+    } // run_bench
+
+    std::cout << "\n[Unit-Tests] Phase 1 (Korrektheit): " << correctness_pass << "/" << correctness_total
+              << " | Phase 2 (Sanity): " << total_pass << "/" << total_tests << "\n";
+    int all_pass = correctness_pass + total_pass;
+    int all_total = correctness_total + total_tests;
+    std::cout << "[Unit-Tests] " << all_pass << "/" << all_total << " bestanden.\n";
+    return (all_pass == all_total) ? 0 : 1;
 }

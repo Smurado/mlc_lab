@@ -12,3 +12,4 @@ Dieses Dokument enthält den Projektbericht für das MLC Lab, inklusive aller no
    week3-4/index
    week5/index
    week6/index
+   week7/index
