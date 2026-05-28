@@ -50,7 +50,6 @@ Im Rahmen der aktuellen Entwicklung haben wir unsere Architektur grundlegend üb
 
 - **Zero-Kernel & Akkumulation:** Wir trennen Initialisierung und Berechnung nun strikt. Die Nullsetzung erfolgt *einmalig* durch die ``@zero`` Primitive (via ``guard first(...)``). Der eigentliche Rechenkernel (``@gemm``) lädt den Output vor der K-Schleife (mittels ``vld1q_f32`` im NEON-Pfad), akkumuliert darauf (``vfmaq_n_f32``) und speichert ihn wieder (``vst1q_f32``).
 - **Transponierungen:** Wir verwenden nun generische Offset-Berechnungen über **Strides**. Ein Tauschen von Achsen (z.B. für eine Transponierung) wird nativ durch die Anpassung der Strides in der ``.teir`` Konfiguration modelliert (wie bei der Datei ``transposition.teir``). Spezifische Transponierungs-Abfragen auf Code-Ebene fallen damit gänzlich weg.
-- **Performance und Hardware-Limitierungen:** Da wir lokale Tests auf Apple Silicon durchführen, generiert der JIT hochoptimierten Code für **ARM NEON**. Auf diesem Weg erreicht unser generierter Microkernel sehr beachtliche ~987 GFLOPS (~1 TFLOP).
 
 7. Performance-Werte (Benchmarks)
 ---------------------------------
