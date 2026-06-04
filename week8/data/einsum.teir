@@ -1,0 +1,27 @@
+teir @einsum {
+    tensor %in0 : f32
+    tensor %in1 : f32
+    tensor %out : f32
+
+    axis @a extent 4 strides { in0: 113246208, out: 21233664 }
+    axis @b extent 4 strides { in1: 4718592, out: 5308416 }
+    axis @c extent 3 strides { in0: 37748736, out: 1769472 }
+    axis @s extent 64 strides { in0: 589824, in1: 73728 }
+    axis @p extent 64 strides { in0: 9216, in1: 1152 }
+    axis @y extent 1152 strides { in1: 4, out: 4 }
+    axis @x extent 1536 strides { in0: 4, out: 4 }
+
+    primitive @zero : Zero        axes { M: [@y], N: [@x]          } metadata { data_type: f32 }
+    primitive @gemm : Contraction axes { M: [@y], N: [@x], K: [@p] } metadata { data_type: f32 }
+
+    schedule {
+        roots [@iter_a]
+        iter @iter_a axis @a policy sequential children [@iter_b]
+        iter @iter_b axis @b policy sequential children [@iter_c]
+        iter @iter_c axis @c policy sequential children [@iter_s]
+        iter @iter_s axis @s policy sequential children [@inv_zero, @inv_gemm]
+        
+        invoke @inv_zero primitive @zero guard first(@s)
+        invoke @inv_gemm primitive @gemm
+    }
+}
