@@ -32,6 +32,13 @@ Die Test-Infrastruktur (``main.cpp``) durchläuft für jedes spezifizierte ``.te
 - **Stage 2:** Cache Blocking
 - **Stage 3:** Combined (Parallelisierung + Cache Blocking)
 
+.. figure:: ablation_study_split.png
+   :alt: Ablation Study Split Diagram
+   :align: center
+   :width: 100%
+
+   Vergleich der relativen Speedups (Baseline = 1.0x) für alle Modelle in Stage 1, Stage 2 und Stage 3. Die extremen Performance-Boosts durch Parallelisierung (Stage 1) bei Einsum und Transposition sind deutlich messbar.
+
 **Erkenntnis:** Durch die tiefgreifende Apple-Hardware-Beschleunigung in unserer Baseline-Fallbackschnittstelle erzielen die AST-Optimierungen hier momentan keine großen Speedup-Vorteile (Speedup liegt meist bei ca. ~1.0x). Faktisch bedeutet Cache-Blocking auf C++ Ebene aktuell eher einen Störfaktor, da die Hardware durch zerteilte Arbeitsblöcke an den schnellen Vektor-Instruktionen gehindert wird, anstatt kohärente Datenmengen am Stück zu verarbeiten.
 
 5. Makefile und Jupyter Analytics
