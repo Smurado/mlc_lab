@@ -14,6 +14,6 @@ $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJS) $(TARGET) results.csv autotuner_results.csv generated_kernel.cpp generated_kernel.so
+	rm -f $(OBJS) $(TARGET) results.csv autotuner_results.csv generated_kernel.cpp generated_kernel.so _trial_*.cpp _trial_*.so
 
 .PHONY: all clean

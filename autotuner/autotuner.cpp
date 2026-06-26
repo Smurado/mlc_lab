@@ -3,6 +3,8 @@
 #include "benchmark.hpp"
 #include <iostream>
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 // Generiert den diskreten Suchraum basierend auf Regeln und filtert (Pruning)
 std::vector<TuningConfig> generateSearchSpace(const TEIR& baseIr) {
@@ -52,30 +54,46 @@ std::vector<TuningConfig> generateSearchSpace(const TEIR& baseIr) {
     return space;
 }
 
-void runAutotuner(const TEIR& baseIr) {
+TuningConfig runAutotuner(const TEIR& baseIr) {
     auto searchSpace = generateSearchSpace(baseIr);
-    
-    std::cout << "[AUTOTUNER] Suchraum generiert. Teste " << searchSpace.size() << " valide Kandidaten (Kandidaten nach Pruning).\n\n";
+
+    std::cout << "[AUTOTUNER] Suchraum generiert. Teste " << searchSpace.size() << " valide Kandidaten (nach Pruning).\n";
+    std::cout << "[AUTOTUNER] Jeder Trial wird JIT-kompiliert, auf Korrektheit geprueft und real gebenchmarkt...\n\n";
 
     TuningConfig bestConfig;
-    BenchmarkResult bestResult = {999999.0, 0.0}; // Startwerte für Minimum-Suche
-    int trialCount = 1;
+    BenchmarkResult bestResult = { std::numeric_limits<double>::infinity(), 0.0 };
+    int trialCount = 0;
+    int validCount = 0;
+    int rejectedCount = 0;
 
     for (const auto& config : searchSpace) {
+        trialCount++;
+
         // Klone die Basis-IR für diesen spezifischen Trial
         TEIR trialIr = baseIr;
 
         // Wende die Transformationen an
         splitOuterAxis(trialIr, "p", config.split_factor);
         reorderSchedule(trialIr, config.loop_order);
+
+        // Genau EINE Achse soll parallel sein: alle zuruecksetzen, dann gezielt setzen.
+        // (Split/Input koennen sonst mehrere Achsen als parallel hinterlassen -> Races.)
+        for (auto& it : trialIr.schedule) it.policy = Policy::Sequential;
         if (!config.parallel_axis.empty()) {
             makeParallel(trialIr, config.parallel_axis);
         }
 
-        // Benchmark den Trial
+        // Real benchmarken (kompiliert, verifiziert, misst echte Zeit)
         BenchmarkResult res = benchmark(trialIr);
 
-        // In CSV loggen
+        // Inkorrekte / racy Konfigurationen verwerfen (runtime == +inf)
+        if (!std::isfinite(res.runtime_ms)) {
+            rejectedCount++;
+            continue;
+        }
+        validCount++;
+
+        // Nur valide Trials in CSV loggen
         saveToCSV("autotuner_results.csv", config.toString(), res);
 
         // Evaluieren, ob es der bisher beste Trial ist
@@ -83,21 +101,24 @@ void runAutotuner(const TEIR& baseIr) {
             bestResult = res;
             bestConfig = config;
             std::cout << "[NEW BEST] Trial #" << trialCount << "/" << searchSpace.size() << " | "
-                      << "Config: SF=" << config.split_factor << ", Parallel=" << (config.parallel_axis.empty() ? "none" : config.parallel_axis)
+                      << "SF=" << config.split_factor << ", Parallel=" << (config.parallel_axis.empty() ? "none" : config.parallel_axis)
                       << " -> Zeit: " << res.runtime_ms << " ms (" << res.gflops << " GFLOPS)\n";
         }
-
-        trialCount++;
     }
 
     std::cout << "\n==================================================\n";
     std::cout << "   AUTOTUNING FERTIG!\n";
     std::cout << "==================================================\n";
+    std::cout << "Getestet: " << searchSpace.size()
+              << " | Valide: " << validCount
+              << " | Verworfen (inkorrekt/Race): " << rejectedCount << "\n";
     std::cout << "Beste Konfiguration:\n";
     std::cout << "  - Split Factor: " << bestConfig.split_factor << "\n";
     std::cout << "  - Loop Order:   ";
     for (const auto& o : bestConfig.loop_order) std::cout << o << " ";
     std::cout << "\n  - Parallel Axis: " << (bestConfig.parallel_axis.empty() ? "none" : bestConfig.parallel_axis) << "\n";
     std::cout << "  - Performance:   " << bestResult.runtime_ms << " ms (" << bestResult.gflops << " GFLOPS)\n";
-    std::cout << "Alle " << searchSpace.size() << " Profile wurden in 'autotuner_results.csv' abgelegt.\n";
+    std::cout << "Alle validen Profile wurden in 'autotuner_results.csv' abgelegt.\n";
+
+    return bestConfig;
 }

@@ -1,75 +1,113 @@
 #include "benchmark.hpp"
+#include "codegen.hpp"
 #include <chrono>
 #include <fstream>
 #include <iostream>
 #include <cmath>
+#include <vector>
+#include <cstdio>
+#include <cstdlib>
+#include <limits>
+#include <dlfcn.h>
 
-// Rekursiver Loop-Interpreter zur Simulation des Schedules
-void runLoopNest(const TEIR& ir, size_t depth, int currentStrideIndex, const std::vector<int>& extents, float* dummyMem, volatile float& accumulator) {
-    if (depth == ir.schedule.size()) {
-        // Innere Kernel-Berechnung (Simulierter Flop-Inhalt)
-        // Nutze den berechneten Stride-Index, um Cache-Lokalität zu erzwingen
-        accumulator += dummyMem[currentStrideIndex & 0xFFFFF]; // Begrenzt auf 1MB Cache-Größe
-        return;
-    }
-
-    std::string currentAxis = ir.schedule[depth].axis;
-    int extent = 1;
-    // Finde das passende Extent für die aktuelle Achse
+// Liefert das Extent einer Achse anhand ihres Namens (oder fallback, falls nicht vorhanden)
+static int extentOf(const TEIR& ir, const std::string& name, int fallback = 1) {
     for (const auto& ax : ir.axes) {
-        if (ax.name == currentAxis) {
-            extent = ax.extent;
-            break;
-        }
+        if (ax.name == name) return ax.extent;
     }
-
-    // Künstlicher Speicher-Stride basierend auf dem Achsennamen zur Cache-Simulation
-    // Achsen bekommen unterschiedliche Strides, um Reordering-Effekte sichtbar zu machen
-    int stride = 1;
-    if (!currentAxis.empty()) {
-        stride = static_cast<int>(currentAxis.back()) * 7; // Pseudo-Zufälliger, aber fester Stride per Achse
-    }
-
-    for (int i = 0; i < extent; ++i) {
-        runLoopNest(ir, depth + 1, currentStrideIndex + (i * stride), extents, dummyMem, accumulator);
-    }
+    return fallback;
 }
 
+// Echtes Benchmarking: Fuer das uebergebene (transformierte) Schedule wird ein
+// konkreter Kernel generiert, JIT-kompiliert, auf Korrektheit geprueft und auf
+// realen Tensor-Daten zeitlich vermessen. Inkorrekte Konfigurationen (z.B. ein
+// Race durch Parallelisierung der Reduktionsachse) werden mit runtime = +inf
+// verworfen, damit der Autotuner sie nicht auswaehlt.
 BenchmarkResult benchmark(const TEIR& ir) {
-    // Berechne die totalen Flops (Jede innere Schleifeninstanz simuliert 2 FLOPs: MAC-Operation)
-    double totalIterations = 1.0;
-    std::vector<int> extents;
-    for (const auto& iter : ir.schedule) {
-        for (const auto& ax : ir.axes) {
-            if (ax.name == iter.axis) {
-                totalIterations *= ax.extent;
-                extents.push_back(ax.extent);
-                break;
-            }
+    static int trialId = 0;
+    const int id = trialId++;
+
+    const BenchmarkResult INVALID = { std::numeric_limits<double>::infinity(), 0.0 };
+
+    // --- Problemdimensionen ableiten ---
+    const int R = extentOf(ir, "r");
+    const int T = extentOf(ir, "t");
+    int P;
+    if (extentOf(ir, "p", -1) != -1) P = extentOf(ir, "p");
+    else P = extentOf(ir, "p0") * extentOf(ir, "p1");
+
+    // --- 1. Kernel-Quelle generieren und schreiben (eindeutiger Name pro Trial) ---
+    const std::string src = "_trial_" + std::to_string(id) + ".cpp";
+    const std::string lib = "./_trial_" + std::to_string(id) + ".so";
+    {
+        std::ofstream f(src);
+        f << generateSourceCode(ir);
+    }
+
+    // --- 2. JIT-Kompilierung mit echten Optimierungen ---
+    const std::string cmd =
+        "g++ -O3 -march=native -fopenmp -shared -fPIC " + src + " -o " + lib + " 2>/dev/null";
+    if (std::system(cmd.c_str()) != 0) {
+        std::remove(src.c_str());
+        return INVALID;
+    }
+
+    // --- 3. Dynamisch laden und Symbol binden ---
+    void* handle = dlopen(lib.c_str(), RTLD_NOW);
+    if (!handle) {
+        std::remove(src.c_str());
+        std::remove(lib.c_str());
+        return INVALID;
+    }
+    typedef void (*kernel_t)(const float*, const float*, float*);
+    auto kernel = reinterpret_cast<kernel_t>(dlsym(handle, ("teir_" + ir.name).c_str()));
+    if (!kernel) {
+        dlclose(handle);
+        std::remove(src.c_str());
+        std::remove(lib.c_str());
+        return INVALID;
+    }
+
+    // --- 4. Echte Tensor-Daten allokieren ---
+    std::vector<float> in0(static_cast<size_t>(R) * P, 1.0f);
+    std::vector<float> in1(static_cast<size_t>(P) * T, 2.0f);
+    std::vector<float> out(static_cast<size_t>(R) * T, 0.0f);
+
+    // --- 5. Warmup + Korrektheitspruefung ---
+    // Erwartung: jedes out-Element = sum_p (1.0 * 2.0) = 2.0 * P
+    kernel(in0.data(), in1.data(), out.data());
+    const float expected = 2.0f * static_cast<float>(P);
+    for (size_t i = 0; i < out.size(); ++i) {
+        if (std::abs(out[i] - expected) > 1e-2f) {
+            dlclose(handle);
+            std::remove(src.c_str());
+            std::remove(lib.c_str());
+            return INVALID; // inkorrekte / racy Konfiguration verwerfen
         }
     }
-    double totalFlops = totalIterations * 2.0;
 
-    // Allokiere Dummy-Speicher für die Cache-Simulation (ca. 4MB)
-    size_t memSize = 1024 * 1024;
-    std::vector<float> dummyMem(memSize, 1.0f);
-    volatile float accumulator = 0.0f;
+    // --- 6. Zeitmessung: Best-of mehrerer Wiederholungen (stabiler gegen Jitter) ---
+    const int ITERS = 200;
+    const int REPEATS = 5;
+    double best_ms = std::numeric_limits<double>::infinity();
+    for (int rep = 0; rep < REPEATS; ++rep) {
+        auto start = std::chrono::high_resolution_clock::now();
+        for (int it = 0; it < ITERS; ++it) {
+            kernel(in0.data(), in1.data(), out.data());
+        }
+        auto end = std::chrono::high_resolution_clock::now();
+        const double ms =
+            std::chrono::duration<double, std::milli>(end - start).count() / ITERS;
+        if (ms < best_ms) best_ms = ms;
+    }
 
-    // Zeitmessung starten
-    auto start = std::chrono::high_resolution_clock::now();
-    
-    // Starte den simulierten Loop-Nest-Interpreter
-    runLoopNest(ir, 0, 0, extents, dummyMem.data(), accumulator);
+    dlclose(handle);
+    std::remove(src.c_str());
+    std::remove(lib.c_str());
 
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> duration = end - start;
-
-    double runtime_ms = duration.count();
-    // GFLOPS = (Total Flops / 10^9) / (Runtime in Sekunden)
-    double runtime_sec = runtime_ms / 1000.0;
-    double gflops = (runtime_sec > 0) ? (totalFlops / 1e9) / runtime_sec : 0.0;
-
-    return {runtime_ms, gflops};
+    const double flops = 2.0 * R * P * T;
+    const double gflops = (best_ms > 0.0) ? (flops / 1e9) / (best_ms / 1000.0) : 0.0;
+    return { best_ms, gflops };
 }
 
 void saveToCSV(const std::string& filename, const std::string& configName, const BenchmarkResult& res) {

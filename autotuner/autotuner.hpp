@@ -17,5 +17,6 @@ struct TuningConfig {
     }
 };
 
-// Startet den Autotuning-Prozess basierend auf einer Start-IR
-void runAutotuner(const TEIR& baseIr);
+// Startet den Autotuning-Prozess basierend auf einer Start-IR und liefert die
+// beste (real gemessene) Konfiguration zurueck.
+TuningConfig runAutotuner(const TEIR& baseIr);

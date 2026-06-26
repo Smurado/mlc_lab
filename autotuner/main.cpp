@@ -12,32 +12,35 @@
 int main() {
     try {
         std::cout << "======================================================\n";
-        std::cout << "   TEIR Autotuner - Phase 6 & 7: NEON SIMD & JIT\n";
+        std::cout << "   TEIR Autotuner - Echtes JIT-Benchmarking\n";
         std::cout << "======================================================\n\n";
 
         // 1. Basis-IR laden
         TEIR irBase = parseTEIR("input.teir");
         
-        // 2. Autotuning ausführen, um den Suchraum zu evaluieren
-        runAutotuner(irBase);
+        // 2. Autotuning ausführen: liefert die real beste Konfiguration zurück
+        TuningConfig best = runAutotuner(irBase);
 
-        // 3. Bestes Schedule anwenden & Code generieren
+        // 3. Bestes Schedule tatsächlich anwenden & Code generieren
         std::cout << "\n[INFO] Wende das gefundene Optimum auf die IR an...\n";
         TEIR bestIr = irBase;
-        splitOuterAxis(bestIr, "p", 64);
-        reorderSchedule(bestIr, {"r", "t", "p0", "p1"});
-        makeParallel(bestIr, "r");
+        splitOuterAxis(bestIr, "p", best.split_factor);
+        reorderSchedule(bestIr, best.loop_order);
+        for (auto& it : bestIr.schedule) it.policy = Policy::Sequential;
+        if (!best.parallel_axis.empty()) {
+            makeParallel(bestIr, best.parallel_axis);
+        }
 
-        std::string neonCode = generateSourceCode(bestIr);
-        writeCodeToFile("generated_kernel.cpp", neonCode);
+        std::string kernelCode = generateSourceCode(bestIr);
+        writeCodeToFile("generated_kernel.cpp", kernelCode);
 
         // ==========================================
-        // PHASE 7: JIT COMPILATION (On-the-fly)
+        // FINALE JIT COMPILATION (On-the-fly)
         // ==========================================
         std::cout << "\n[JIT] Kompiliere 'generated_kernel.cpp' zu Shared Library...\n";
         
-        // Shell-Befehl zur Kompilierung einer plattformunabhängigen .so-Datei mit O3-Optimierung
-        int compileStatus = std::system("g++ -O3 -shared -fPIC generated_kernel.cpp -o generated_kernel.so");
+        // Shell-Befehl zur Kompilierung der finalen .so-Datei (gleiche Flags wie im Benchmark)
+        int compileStatus = std::system("g++ -O3 -march=native -fopenmp -shared -fPIC generated_kernel.cpp -o generated_kernel.so");
         if (compileStatus != 0) {
             throw std::runtime_error("JIT-Kompilierung fehlgeschlagen!");
         }
@@ -70,7 +73,7 @@ int main() {
         std::vector<float> in1(128 * 32, 2.0f);  // Mit 2.0 initialisiert
         std::vector<float> out(96 * 32,  0.0f);  // Ergebnisspeicher
 
-        std::cout << "[VALIDATION] Fuehre JIT-kompilierten NEON-Kernel aus...\n";
+        std::cout << "[VALIDATION] Fuehre JIT-kompilierten Kernel aus...\n";
         teir_contraction_jit(in0.data(), in1.data(), out.data());
 
         // Mathematische Verifizierung:
@@ -90,7 +93,7 @@ int main() {
             std::cout << "\n======================================================\n";
             std::cout << "   🎉 VALIDATION SUCCESSFUL! 🎉\n";
             std::cout << "======================================================\n";
-            std::cout << "  Der JIT-Generierte ARM64 NEON Kernel rechnet zu\n";
+            std::cout << "  Der JIT-generierte, real getunte Kernel rechnet zu\n";
             std::cout << "  100% mathematisch korrekt. Element[0] = " << out[0] << "\n";
         } else {
             std::cout << "[FAIL] Die Berechnung lieferte falsche Werte.\n";
