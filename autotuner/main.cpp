@@ -40,7 +40,8 @@ int main() {
         std::cout << "\n[JIT] Kompiliere 'generated_kernel.cpp' zu Shared Library...\n";
         
         // Shell-Befehl zur Kompilierung der finalen .so-Datei (gleiche Flags wie im Benchmark)
-        int compileStatus = std::system("g++ -O3 -march=native -fopenmp -shared -fPIC generated_kernel.cpp -o generated_kernel.so");
+        // Nutze explizit den Homebrew GCC um OpenMP Probleme mit Apple Clang zu umgehen
+        int compileStatus = std::system("/opt/homebrew/bin/g++-15 -O3 -march=native -fopenmp -shared -fPIC generated_kernel.cpp -o generated_kernel.so");
         if (compileStatus != 0) {
             throw std::runtime_error("JIT-Kompilierung fehlgeschlagen!");
         }

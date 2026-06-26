@@ -1,4 +1,5 @@
-CXX = g++
+# Hart auf Homebrew GCC 15 verlinkt, um Apple Clang / OpenMP Fehler zu vermeiden
+CXX = /opt/homebrew/bin/g++-15
 CXXFLAGS = -std=c++20 -Wall -Wextra -O2
 TARGET = teir_compiler
 
