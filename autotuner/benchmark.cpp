@@ -45,9 +45,8 @@ BenchmarkResult benchmark(const TEIR& ir) {
     }
 
     // --- 2. JIT-Kompilierung mit echten Optimierungen ---
-    // Nutze explizit den Homebrew GCC um OpenMP Probleme mit Apple Clang zu umgehen
-    const std::string cmd =
-        "/opt/homebrew/bin/g++-15 -O3 -march=native -fopenmp -shared -fPIC " + src + " -o " + lib + " 2>/dev/null";
+    // Der Compiler-Befehl wird dynamisch aus den Makefile-Parametern zusammengebaut (-D Macros)
+    const std::string cmd = std::string(JIT_CXX) + " " + JIT_FLAGS + " " + JIT_LDFLAGS + " " + src + " -o " + lib + " 2>/dev/null";
     if (std::system(cmd.c_str()) != 0) {
         std::remove(src.c_str());
         return INVALID;

@@ -1,6 +1,13 @@
-# Hart auf Homebrew GCC 15 verlinkt, um Apple Clang / OpenMP Fehler zu vermeiden
-CXX = /opt/homebrew/bin/g++-15
-CXXFLAGS = -std=c++20 -Wall -Wextra -O2
+CXX = clang++
+CXXFLAGS = -std=c++20 -Wall -Wextra -O3 -Xpreprocessor -fopenmp -I/opt/homebrew/opt/libomp/include
+LDFLAGS = -L/opt/homebrew/opt/libomp/lib -lomp
+
+# JIT Parameter an den C++ Code durchreichen
+JIT_CXX = "$(CXX)"
+JIT_FLAGS = "-O3 -march=native $(CXXFLAGS)"
+JIT_LDFLAGS = "-shared -fPIC $(LDFLAGS)"
+DEFINES = -DJIT_CXX=\"$(JIT_CXX)\" -DJIT_FLAGS=\"$(JIT_FLAGS)\" -DJIT_LDFLAGS=\"$(JIT_LDFLAGS)\"
+
 TARGET = teir_compiler
 
 SRCS = main.cpp parser.cpp passes.cpp benchmark.cpp autotuner.cpp codegen.cpp
@@ -9,12 +16,15 @@ OBJS = $(SRCS:.cpp=.o)
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CXX) $(CXXFLAGS) -o $(TARGET) $(OBJS)
+	@echo "Linking $(TARGET)..."
+	@$(CXX) $(CXXFLAGS) -o $(TARGET) $(OBJS) $(LDFLAGS)
 
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	@echo "Compiling $<..."
+	@$(CXX) $(CXXFLAGS) $(DEFINES) -c $< -o $@
 
 clean:
-	rm -f $(OBJS) $(TARGET) results.csv autotuner_results.csv generated_kernel.cpp generated_kernel.so _trial_*.cpp _trial_*.so
+	@echo "Cleaning up..."
+	@rm -f $(OBJS) $(TARGET) results.csv autotuner_results.csv generated_kernel.cpp generated_kernel.so _trial_*.cpp _trial_*.so
 
 .PHONY: all clean
