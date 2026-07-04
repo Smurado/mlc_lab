@@ -33,6 +33,17 @@ test_run
 test_run_debug
 *test_run*
 
+# Autotuner JIT/build artifacts
+autotuner/teir_compiler
+autotuner/generated_kernel.cpp
+autotuner/generated_kernel.so
+autotuner/_trial_*.cpp
+autotuner/_trial_*.so
+
+# Week9 supplement binary data (available via cloud link in week9/README.md)
+week9/applications/tensor_ring/data/*.bin
+week9/applications/tensorized_net/data/*.bin
+
 # macOS Debug Symbols
 *.dSYM/
 
