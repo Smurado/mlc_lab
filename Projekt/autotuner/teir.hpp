@@ -8,6 +8,13 @@ enum class Policy {
     Parallel
 };
 
+// Codegen-Backend: SCALAR nutzt Autovektorisierung + OpenMP,
+// SME generiert echten ARM SME Outer-Product-GEMM (smstart/fmopa/smstop).
+enum class Backend {
+    Scalar,
+    SME
+};
+
 inline std::string policyToString(Policy p) {
     return p == Policy::Parallel ? "parallel" : "sequential";
 }
@@ -35,6 +42,7 @@ struct TEIR {
     std::vector<Iteration> schedule;
     std::vector<std::string> invokes;
     int unrollFactor = 1; // Unroll-Faktor fuer die innerste Schleife (Codegen)
+    Backend backend = Backend::Scalar; // Codegen-Backend (Scalar oder SME)
 
     // Hilfsfunktion zur Verifizierung: Gibt die geladene IR wieder aus
     void print() const {

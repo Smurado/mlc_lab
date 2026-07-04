@@ -129,6 +129,7 @@ struct SearchContext {
         }
 
         trialIr.unrollFactor = config.unroll_factor;
+        trialIr.backend = opts.backend;
 
         return benchmark(trialIr);
     }

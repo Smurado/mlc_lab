@@ -38,6 +38,14 @@ int main() {
         if (envBudget) {
             opts.timeBudgetMs = std::stod(envBudget);
         }
+        // Backend-Auswahl: scalar (Default) oder sme
+        const char* envBackend = std::getenv("TEIR_BACKEND");
+        if (envBackend) {
+            std::string b(envBackend);
+            if (b == "sme" || b == "SME") {
+                opts.backend = Backend::SME;
+            }
+        }
 
         // 3. Autotuning ausführen: liefert die real beste Konfiguration zurück
         TuningConfig best = runAutotuner(irBase, opts);
@@ -52,6 +60,7 @@ int main() {
             makeParallel(bestIr, best.parallel_axis);
         }
         bestIr.unrollFactor = best.unroll_factor;
+        bestIr.backend = opts.backend;
 
         std::string kernelCode = generateSourceCode(bestIr);
         writeCodeToFile("generated_kernel.cpp", kernelCode);

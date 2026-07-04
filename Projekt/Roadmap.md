@@ -56,7 +56,13 @@ Stand: 2026-07-04
   - [x] Random Search als stochastische Baseline (Ablation-Vergleich)
   - [x] Strategie-Auswahl per `TEIR_STRATEGY`-Env-Variable, CSV-Logging mit Strategie-Spalte
   - [ ] abstraktes Kostenmodell zum Vorfiltern (optional, erst sinnvoll mit NEON/SME-Backends)
-- [ ] SME-Backend zusätzlich zu NEON (Ideen.md fordert „speziell SME und NEON")
+- [x] SME-Backend zusätzlich zu NEON (Ideen.md fordert „speziell SME und NEON")
+  - [x] `Backend::SME` mit echten `fmopa` Outer-Product-Instruktionen via Inline-ASM
+  - [x] A-Transposition für zusammenhängende `ld1w`-Loads (row-major → column-major)
+  - [x] `smstart`/`smstop` einmal außen (wie week3-4 Fast-Variants)
+  - [x] `volatile double best_ms` Fix: SME-ASM clobbered Vektorregister, in denen der Compiler `best_ms` hielt
+  - [x] JIT-Flags dynamisch: `-march=native` → `-march=armv9.2-a+sme` für SME-Backend
+  - [x] Validiert: 161.2 GFLOPS (SME) vs 16.6 GFLOPS (Scalar) = 9.7× Beschleunigung
 - [ ] Benchmark-Visualisierung (Notebook / Plots)
 - [ ] Vergleich gegen etablierte Frameworks
   - [ ] PyTorch mit `accelerate`

@@ -45,8 +45,20 @@ BenchmarkResult benchmark(const TEIR& ir) {
     }
 
     // --- 2. JIT-Kompilierung mit echten Optimierungen ---
-    // Der Compiler-Befehl wird dynamisch aus den Makefile-Parametern zusammengebaut (-D Macros)
-    const std::string cmd = std::string(JIT_CXX) + " " + JIT_FLAGS + " " + JIT_LDFLAGS + " " + src + " -o " + lib + " 2>/dev/null";
+    // Der Compiler-Befehl wird dynamisch aus den Makefile-Parametern zusammengebaut (-D Macros).
+    // Fuer SME-Backend: ersetze -march=native durch -march=armv9.2-a+sme
+    std::string jitFlags = JIT_FLAGS;
+    if (ir.backend == Backend::SME) {
+        const std::string native = "-march=native";
+        const std::string sme = "-march=armv9.2-a+sme";
+        size_t pos = jitFlags.find(native);
+        if (pos != std::string::npos) {
+            jitFlags.replace(pos, native.length(), sme);
+        } else {
+            jitFlags += " " + sme;
+        }
+    }
+    const std::string cmd = std::string(JIT_CXX) + " " + jitFlags + " " + JIT_LDFLAGS + " " + src + " -o " + lib + " 2>/dev/null";
     if (std::system(cmd.c_str()) != 0) {
         std::remove(src.c_str());
         return INVALID;
@@ -91,10 +103,11 @@ BenchmarkResult benchmark(const TEIR& ir) {
     // Langsamkeit durch schlechte Parallelisierung) den gesamten Autotuner
     // blockiert. Sobald ein Repeat-Lauf laenger als REPEAT_CAP_MS braucht,
     // wird das Ergebnis direkt uebernommen und nicht weiter wiederholt.
-    const int ITERS = 200;
+    // ITERS ist hoeher gewaehlt, damit auch sehr schnelle SME-Kernels messbar sind.
+    const int ITERS = 10000;
     const int REPEATS = 5;
     const double REPEAT_CAP_MS = 2000.0; // 2 s Cap pro Repeat-Block
-    double best_ms = std::numeric_limits<double>::infinity();
+    volatile double best_ms = std::numeric_limits<double>::infinity();
     for (int rep = 0; rep < REPEATS; ++rep) {
         auto start = std::chrono::high_resolution_clock::now();
         for (int it = 0; it < ITERS; ++it) {
