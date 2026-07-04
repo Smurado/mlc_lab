@@ -1,6 +1,6 @@
 # Roadmap & Fortschritt: TEIR Auto-Tuning Optimizer
 
-Chronologische Abarbeitungsliste für das Abschlussprojekt. Basiert auf der Vision in [Ideen.md](Ideen.md) und dem aktuellen Code-Stand im [autotuner/](../autotuner)-Ordner.
+Chronologische Abarbeitungsliste für das Abschlussprojekt. Basiert auf der Vision in [Ideen.md](Ideen.md) und dem aktuellen Code-Stand im [autotuner/](autotuner)-Ordner.
 
 **Legende:** ✅ fertig · 🟡 teilweise / mit Mängeln · ⬜ offen
 
@@ -20,14 +20,14 @@ Stand: 2026-06-25
 
 ## Stufe 1 – MVP: Parametrisierte JIT-Kompilierung
 
-- [x] TEIR-IR-Struktur (`Axis`, `Iteration`, `Policy`, `Tensor`) — [teir.hpp](../autotuner/teir.hpp)
-- [x] Parser für `.teir`-Dateien — [parser.cpp](../autotuner/parser.cpp), [input.teir](../autotuner/input.teir)
-- [x] Parametrisierte Passes statt fester Werte — [passes.cpp](../autotuner/passes.cpp)
+- [x] TEIR-IR-Struktur (`Axis`, `Iteration`, `Policy`, `Tensor`) — [teir.hpp](autotuner/teir.hpp)
+- [x] Parser für `.teir`-Dateien — [parser.cpp](autotuner/parser.cpp), [input.teir](autotuner/input.teir)
+- [x] Parametrisierte Passes statt fester Werte — [passes.cpp](autotuner/passes.cpp)
   - [x] `splitOuterAxis` (Tiling / Cache-Blocking)
   - [x] `reorderSchedule` (Loop-Nesting)
   - [x] `makeParallel` (OpenMP-Parallelisierung)
-- [x] Code-Generierung mit ARM NEON-Intrinsics — [codegen.cpp](../autotuner/codegen.cpp)
-- [x] JIT-Kompilierung zur Laufzeit (`g++ -O3 -shared -fPIC`) — [main.cpp](../autotuner/main.cpp)
+- [x] Code-Generierung mit ARM NEON-Intrinsics — [codegen.cpp](autotuner/codegen.cpp)
+- [x] JIT-Kompilierung zur Laufzeit (`g++ -O3 -shared -fPIC`) — [main.cpp](autotuner/main.cpp)
 - [x] Dynamisches Laden via `dlopen` / `dlsym`
 - [x] Mathematische Verifikation des Kernel-Ergebnisses
 
@@ -35,12 +35,12 @@ Stand: 2026-06-25
 
 ## Stufe 2 – Profiler & Suchraum (Trials)
 
-- [x] Diskreter Suchraum aus Split-Faktoren × Loop-Orders × Parallel-Achsen — [autotuner.cpp](../autotuner/autotuner.cpp)
+- [x] Diskreter Suchraum aus Split-Faktoren × Loop-Orders × Parallel-Achsen — [autotuner.cpp](autotuner/autotuner.cpp)
 - [x] Regelbasiertes Pruning
   - [x] Nur Split-Faktoren, die das Achsen-Extent exakt teilen
   - [x] Innerste Schleife wird nie parallelisiert
 - [x] Trial-Schleife mit Auswahl des besten Kandidaten
-- [x] Ergebnis-Logging nach `autotuner_results.csv` — [benchmark.cpp](../autotuner/benchmark.cpp)
+- [x] Ergebnis-Logging nach `autotuner_results.csv` — [benchmark.cpp](autotuner/benchmark.cpp)
 - [x] **Benchmark misst den ECHTEN JIT-Kernel** — jeder Trial wird mit `g++ -O3 -march=native -fopenmp` kompiliert, auf echten Daten vermessen (Best-of-5 × 200 Iterationen) und liefert reale GFLOPS
 - [x] **Korrektheits-Validierung pro Trial** — inkorrekte/racy Konfigurationen (parallelisierte Reduktionsachse) werden automatisch verworfen
 - [x] **Codegen verwendet die getunten Parameter** — `generateSourceCode` ist parametrisch (Split, Loop-Order, Parallel-Achse); `main.cpp` verbaut die real beste Konfiguration
