@@ -15,8 +15,11 @@ int main() {
         std::cout << "   TEIR Autotuner - Echtes JIT-Benchmarking\n";
         std::cout << "======================================================\n\n";
 
-        // 1. Basis-IR laden
-        TEIR irBase = parseTEIR("input.teir");
+        // 1. Basis-IR laden (Datei per Env-Variable waehlbar, Default: input.teir)
+        const char* envInput = std::getenv("TEIR_INPUT");
+        const std::string inputFile = envInput ? envInput : "input.teir";
+        std::cout << "[INFO] Lade IR aus: " << inputFile << "\n";
+        TEIR irBase = parseTEIR(inputFile);
 
         // 2. Autotuner-Optionen konfigurieren
         //    Strategie ist hier zentral umschaltbar fuer Vergleichslaeufe.
@@ -100,23 +103,30 @@ int main() {
         // VALIDIERUNG MIT ECHTEN ARRAYS
         // ==========================================
         std::cout << "\n[VALIDATION] Allokiere echte Tensor-Workloads...\n";
-        // Dimensionen aus der IR: in0 (96x128), in1 (128x32), out (96x32)
-        std::vector<float> in0(96 * 128, 1.0f);  // Mit 1.0 initialisiert
-        std::vector<float> in1(128 * 32, 2.0f);  // Mit 2.0 initialisiert
-        std::vector<float> out(96 * 32,  0.0f);  // Ergebnisspeicher
+        // Dimensionen dynamisch aus der Basis-IR abgeleitet.
+        auto extentOf = [&](const std::string& name, int fb = 1) -> int {
+            for (const auto& ax : irBase.axes) if (ax.name == name) return ax.extent;
+            return fb;
+        };
+        const int P = extentOf("p");
+        const int R = extentOf("r");
+        const int T = extentOf("t");
+        std::vector<float> in0(static_cast<size_t>(R) * P, 1.0f);
+        std::vector<float> in1(static_cast<size_t>(P) * T, 2.0f);
+        std::vector<float> out(static_cast<size_t>(R) * T, 0.0f);
 
         std::cout << "[VALIDATION] Fuehre JIT-kompilierten Kernel aus...\n";
         teir_contraction_jit(in0.data(), in1.data(), out.data());
 
         // Mathematische Verifizierung:
-        // Jedes Element in 'out' berechnet sich aus dem Skalarprodukt einer Zeile von in0 und Spalte von in1.
-        // Länge der Reduktionsachse (p) ist 128. Jede Multiplikation ist 1.0 * 2.0 = 2.0.
-        // Erwartetes Ergebnis pro Element: 128 * 2.0 = 256.0
+        // out[r,t] = sum_p (1.0 * 2.0) = 2.0 * P
+        const float expected = 2.0f * static_cast<float>(P);
         bool verificationPassed = true;
         for (size_t i = 0; i < out.size(); ++i) {
-            if (std::abs(out[i] - 256.0f) > 1e-4) {
+            if (std::abs(out[i] - expected) > 1e-4) {
                 verificationPassed = false;
-                std::cout << "[ERROR] Abweichung bei Index " << i << ": Gefunden=" << out[i] << ", Erwartet=256.0\n";
+                std::cout << "[ERROR] Abweichung bei Index " << i << ": Gefunden=" << out[i]
+                          << ", Erwartet=" << expected << "\n";
                 break;
             }
         }
