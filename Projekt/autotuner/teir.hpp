@@ -34,6 +34,7 @@ struct TEIR {
     std::vector<std::string> primitives;
     std::vector<Iteration> schedule;
     std::vector<std::string> invokes;
+    int unrollFactor = 1; // Unroll-Faktor fuer die innerste Schleife (Codegen)
 
     // Hilfsfunktion zur Verifizierung: Gibt die geladene IR wieder aus
     void print() const {

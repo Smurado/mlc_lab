@@ -46,11 +46,17 @@ std::string generateSourceCode(const TEIR& ir) {
 
     // --- Schleifennest exakt in Schedule-Reihenfolge erzeugen ---
     int indent = 4;
-    for (const auto& iter : ir.schedule) {
+    const int nIters = static_cast<int>(ir.schedule.size());
+    for (int i = 0; i < nIters; ++i) {
+        const auto& iter = ir.schedule[i];
         const std::string pad(indent, ' ');
         const int extent = extentOf(ir, iter.axis);
         if (iter.policy == Policy::Parallel) {
             ss << pad << "#pragma omp parallel for\n";
+        }
+        // Unroll-Pragma nur fuer die innerste Schleife, falls factor > 1
+        if (i == nIters - 1 && ir.unrollFactor > 1) {
+            ss << pad << "#pragma GCC unroll(" << ir.unrollFactor << ")\n";
         }
         ss << pad << "for (int " << iter.axis << " = 0; " << iter.axis << " < "
            << extent << "; ++" << iter.axis << ") {\n";

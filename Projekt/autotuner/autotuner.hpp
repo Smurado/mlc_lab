@@ -7,19 +7,23 @@ struct TuningConfig {
     int split_factor;
     std::vector<std::string> loop_order;
     std::string parallel_axis;
+    int unroll_factor;
 
     // Generiert einen kompakten String-Namen für die CSV/Ausgabe
     std::string toString() const {
         std::string orderStr = "";
         for (const auto& o : loop_order) orderStr += o + "-";
         if (!orderStr.empty()) orderStr.pop_back();
-        return "split_" + std::to_string(split_factor) + "_order_" + orderStr + "_parallel_" + (parallel_axis.empty() ? "none" : parallel_axis);
+        return "split_" + std::to_string(split_factor) + "_order_" + orderStr +
+               "_parallel_" + (parallel_axis.empty() ? "none" : parallel_axis) +
+               "_unroll_" + std::to_string(unroll_factor);
     }
 
     bool operator==(const TuningConfig& other) const {
         return split_factor == other.split_factor &&
                loop_order == other.loop_order &&
-               parallel_axis == other.parallel_axis;
+               parallel_axis == other.parallel_axis &&
+               unroll_factor == other.unroll_factor;
     }
 };
 

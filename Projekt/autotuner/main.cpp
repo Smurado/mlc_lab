@@ -51,6 +51,7 @@ int main() {
         if (!best.parallel_axis.empty()) {
             makeParallel(bestIr, best.parallel_axis);
         }
+        bestIr.unrollFactor = best.unroll_factor;
 
         std::string kernelCode = generateSourceCode(bestIr);
         writeCodeToFile("generated_kernel.cpp", kernelCode);

@@ -17,31 +17,39 @@
 std::vector<TuningConfig> generateSearchSpace(const TEIR& baseIr) {
     std::vector<TuningConfig> space;
 
-    std::vector<int> potentialFactors = {2, 4, 8, 16, 32, 64};
+    // Erweiterte Split-Faktoren (inkl. 1 = kein Split, 128 = voll)
+    std::vector<int> potentialFactors = {1, 2, 4, 8, 16, 32, 64, 128};
 
     int pExtent = 128;
     for (const auto& ax : baseIr.axes) {
         if (ax.name == "p") { pExtent = ax.extent; break; }
     }
 
-    std::vector<std::vector<std::string>> orders = {
-        {"p0", "p1", "r", "t"},
-        {"r", "p0", "p1", "t"},
-        {"r", "t", "p0", "p1"},
-        {"p0", "r", "p1", "t"}
-    };
+    // Alle 24 Permutationen von {p0, p1, r, t} via next_permutation
+    std::vector<std::string> baseOrder = {"p0", "p1", "r", "t"};
+    std::sort(baseOrder.begin(), baseOrder.end());
+    std::vector<std::vector<std::string>> orders;
+    do {
+        orders.push_back(baseOrder);
+    } while (std::next_permutation(baseOrder.begin(), baseOrder.end()));
 
     std::vector<std::string> parallelOptions = {"", "p0", "r", "t", "p1"};
+
+    // Unroll-Faktoren fuer die innerste Schleife
+    std::vector<int> unrollFactors = {1, 2, 4, 8, 16};
 
     for (int factor : potentialFactors) {
         if (pExtent % factor != 0) continue;
 
         for (const auto& order : orders) {
             for (const auto& parallelAxis : parallelOptions) {
+                // Pruning: parallelisiere nie die innerste Schleife
                 if (!parallelAxis.empty() && !order.empty() && order.back() == parallelAxis) {
                     continue;
                 }
-                space.push_back({factor, order, parallelAxis});
+                for (int unroll : unrollFactors) {
+                    space.push_back({factor, order, parallelAxis, unroll});
+                }
             }
         }
     }
@@ -95,6 +103,7 @@ struct SearchContext {
     // Hash einer Config, um besuchte Trials nicht doppelt zu evaluieren.
     size_t hashConfig(const TuningConfig& c) const {
         size_t h = std::hash<int>{}(c.split_factor);
+        h ^= std::hash<int>{}(c.unroll_factor) + 0x9e3779b9 + (h << 6) + (h >> 2);
         h ^= std::hash<std::string>{}(c.parallel_axis) + 0x9e3779b9 + (h << 6) + (h >> 2);
         for (const auto& o : c.loop_order) {
             h ^= std::hash<std::string>{}(o) + 0x9e3779b9 + (h << 6) + (h >> 2);
@@ -118,6 +127,8 @@ struct SearchContext {
         if (!config.parallel_axis.empty()) {
             makeParallel(trialIr, config.parallel_axis);
         }
+
+        trialIr.unrollFactor = config.unroll_factor;
 
         return benchmark(trialIr);
     }

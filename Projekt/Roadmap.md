@@ -78,7 +78,7 @@ Stand: 2026-07-04
 ## Offene Notizen / Risiken
 
 - ✅ Der größte konzeptionelle Bruch (simuliertes Benchmark + hartcodierter Codegen) ist behoben: Tuning, Messung und generierter Kernel hängen jetzt zusammen.
-- Laufzeit: ~96 echte `g++ -O3`-Kompilate → voller Lauf dauert ~2 min (compile-gebunden). Early-Stopping / Caching könnte das reduzieren.
+- Laufzeit: ~3840 Kandidaten im Suchraum (24 Loop-Permutationen × 8 Split-Faktoren × 5 Parallel-Achsen × 5 Unroll-Faktoren, nach Pruning). JIT-Kompilierung dominiert (~3 s pro Trial) → Early-Stopping / Zeit-Budget essenziell.
 - OpenMP läuft real (Homebrew GCC 15, 16 Threads). Bei diesem kleinen Workload (~0.79 MFLOP/Kernel) ist seriell aktuell am schnellsten — parallele Configs verlieren durch Thread-Overhead.
 - Aktueller Kern ist skalar (Autovektorisierung via `-march=native`). Echte NEON-/SME-Intrinsics bleiben als Stufe-3-Erweiterung offen.
 - SME-Support evtl. abhängig von Hardware-/Compiler-Verfügbarkeit auf dem Zielgerät (M-Serie + passender Toolchain) prüfen.
