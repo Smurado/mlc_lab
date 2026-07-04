@@ -137,11 +137,15 @@ TuningConfig runAutotuner(const TEIR& baseIr, const AutotunerOptions& opts) {
         saveToCSV("autotuner_results.csv", config.toString(), res);
 
         // Evaluieren, ob es der bisher beste Trial ist (mit Min-Delta gegen Jitter)
+        // Sonderfall: initialer Best ist +inf -> jede finite Zeit ist eine Verbesserung.
+        const bool isInitialBest = !std::isfinite(bestResult.runtime_ms);
         const double improvementAbs = bestResult.runtime_ms - res.runtime_ms;
         const double improvementRel =
-            (bestResult.runtime_ms > 0.0) ? improvementAbs / bestResult.runtime_ms : 1.0;
+            (std::isfinite(bestResult.runtime_ms) && bestResult.runtime_ms > 0.0)
+                ? improvementAbs / bestResult.runtime_ms
+                : 1.0;
 
-        if (improvementRel >= opts.minImprovementRel) {
+        if (isInitialBest || improvementRel >= opts.minImprovementRel) {
             bestResult = res;
             bestConfig = config;
             trialsSinceImprovement = 0;

@@ -87,8 +87,13 @@ BenchmarkResult benchmark(const TEIR& ir) {
     }
 
     // --- 6. Zeitmessung: Best-of mehrerer Wiederholungen (stabiler gegen Jitter) ---
+    // Per-Repeat-Cap verhindert, dass ein pathological Trial (z.B. extreme
+    // Langsamkeit durch schlechte Parallelisierung) den gesamten Autotuner
+    // blockiert. Sobald ein Repeat-Lauf laenger als REPEAT_CAP_MS braucht,
+    // wird das Ergebnis direkt uebernommen und nicht weiter wiederholt.
     const int ITERS = 200;
     const int REPEATS = 5;
+    const double REPEAT_CAP_MS = 2000.0; // 2 s Cap pro Repeat-Block
     double best_ms = std::numeric_limits<double>::infinity();
     for (int rep = 0; rep < REPEATS; ++rep) {
         auto start = std::chrono::high_resolution_clock::now();
@@ -96,9 +101,11 @@ BenchmarkResult benchmark(const TEIR& ir) {
             kernel(in0.data(), in1.data(), out.data());
         }
         auto end = std::chrono::high_resolution_clock::now();
-        const double ms =
-            std::chrono::duration<double, std::milli>(end - start).count() / ITERS;
+        const double blockMs =
+            std::chrono::duration<double, std::milli>(end - start).count();
+        const double ms = blockMs / ITERS;
         if (ms < best_ms) best_ms = ms;
+        if (blockMs >= REPEAT_CAP_MS) break; // Trial zu langsam, nicht weiter messen
     }
 
     dlclose(handle);
