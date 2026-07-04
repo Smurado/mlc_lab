@@ -117,7 +117,8 @@ BenchmarkResult benchmark(const TEIR& ir) {
     return { best_ms, gflops };
 }
 
-void saveToCSV(const std::string& filename, const std::string& configName, const BenchmarkResult& res) {
+void saveToCSV(const std::string& filename, const std::string& configName,
+               const BenchmarkResult& res, const std::string& strategy) {
     std::ofstream file;
     // Prüfe, ob Datei bereits existiert, um Header zu schreiben
     std::ifstream check(filename);
@@ -126,8 +127,8 @@ void saveToCSV(const std::string& filename, const std::string& configName, const
 
     file.open(filename, std::ios_base::app);
     if (!exists) {
-        file << "config,runtime_ms,gflops\n";
+        file << "strategy,config,runtime_ms,gflops\n";
     }
-    file << configName << "," << res.runtime_ms << "," << res.gflops << "\n";
+    file << strategy << "," << configName << "," << res.runtime_ms << "," << res.gflops << "\n";
     file.close();
 }

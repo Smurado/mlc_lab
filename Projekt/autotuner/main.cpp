@@ -17,9 +17,30 @@ int main() {
 
         // 1. Basis-IR laden
         TEIR irBase = parseTEIR("input.teir");
-        
-        // 2. Autotuning ausführen: liefert die real beste Konfiguration zurück
-        TuningConfig best = runAutotuner(irBase);
+
+        // 2. Autotuner-Optionen konfigurieren
+        //    Strategie ist hier zentral umschaltbar fuer Vergleichslaeufe.
+        AutotunerOptions opts;
+        // Wahl der Suchstrategie (zur Laufzeit z.B. per ENV-Variable moeglich):
+        const char* envStrategy = std::getenv("TEIR_STRATEGY");
+        if (envStrategy) {
+            std::string s(envStrategy);
+            if (s == "random" || s == "RANDOM") {
+                opts.strategy = SearchStrategy::RANDOM_SEARCH;
+            } else if (s == "sa" || s == "SA" || s == "annealing") {
+                opts.strategy = SearchStrategy::SIMULATED_ANNEALING;
+            } else if (s == "ga" || s == "GA" || s == "genetic") {
+                opts.strategy = SearchStrategy::GENETIC;
+            }
+        }
+        // Zeit-Budget fuer Vergleichslaeufe reduzieren, falls per Env gesetzt
+        const char* envBudget = std::getenv("TEIR_TIME_BUDGET_MS");
+        if (envBudget) {
+            opts.timeBudgetMs = std::stod(envBudget);
+        }
+
+        // 3. Autotuning ausführen: liefert die real beste Konfiguration zurück
+        TuningConfig best = runAutotuner(irBase, opts);
 
         // 3. Bestes Schedule tatsächlich anwenden & Code generieren
         std::cout << "\n[INFO] Wende das gefundene Optimum auf die IR an...\n";

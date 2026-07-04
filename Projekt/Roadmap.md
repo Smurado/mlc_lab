@@ -50,9 +50,12 @@ Stand: 2026-07-04
 
 ## Stufe 3 – Die Kür: Heuristiken & Benchmarking
 
-- [ ] Intelligente Such-Heuristik statt Brute-Force
-  - [ ] z.B. Simulated Annealing **oder** Genetic Algorithm
-  - [ ] **oder** abstraktes Kostenmodell zum Vorfiltern
+- [x] Intelligente Such-Heuristik statt Brute-Force
+  - [x] Simulated Annealing (TVM-Default, probabilistisches Akzeptieren von Verschlechterungen)
+  - [x] Genetic Algorithm (populationsbasiert, Crossover/Mutation, Tournament-Selektion, Elite-Preservation)
+  - [x] Random Search als stochastische Baseline (Ablation-Vergleich)
+  - [x] Strategie-Auswahl per `TEIR_STRATEGY`-Env-Variable, CSV-Logging mit Strategie-Spalte
+  - [ ] abstraktes Kostenmodell zum Vorfiltern (optional, erst sinnvoll mit NEON/SME-Backends)
 - [ ] SME-Backend zusätzlich zu NEON (Ideen.md fordert „speziell SME und NEON")
 - [ ] Benchmark-Visualisierung (Notebook / Plots)
 - [ ] Vergleich gegen etablierte Frameworks
@@ -66,7 +69,7 @@ Stand: 2026-07-04
 1. ~~**Benchmark auf echten JIT-Kernel umstellen**~~ ✅ erledigt — reale Messung + Korrektheits-Check pro Trial.
 2. ~~**Codegen parametrisieren**~~ ✅ erledigt — getunte Parameter fließen in den Kernel, Best-Config wird verbaut.
 3. ~~**Early-Stopping**~~ ✅ erledigt — Patience + Min-Delta + Shuffle + Zeit-Budget.
-4. **Suchheuristik** (Simulated Annealing o.ä.) auf den jetzt validen Suchraum aufsetzen (Stufe 3).
+4. ~~**Suchheuristik**~~ ✅ erledigt — Simulated Annealing, Genetic Algorithm, Random Search (3 Strategien mit gemeinsamen Kern, CSV-Vergleichslogging).
 5. **SME-/NEON-Intrinsics-Codegen-Pfad** ergänzen (Stufe 3) — aktuell skalarer Kern mit `-O3 -march=native`-Autovektorisierung.
 6. **Framework-Vergleich + Visualisierung** als Abschluss-Evaluation (Stufe 3).
 
