@@ -4,7 +4,7 @@ Chronologische Abarbeitungsliste für das Abschlussprojekt. Basiert auf der Visi
 
 **Legende:** ✅ fertig · 🟡 teilweise / mit Mängeln · ⬜ offen
 
-Stand: 2026-06-25
+Stand: 2026-07-04
 
 ---
 
@@ -13,7 +13,7 @@ Stand: 2026-06-25
 | Stufe | Thema | Status |
 |-------|-------|--------|
 | 1 | MVP – Parametrisierte JIT-Kompilierung | ✅ fertig |
-| 2 | Profiler & Suchraum (Trials) | ✅ echtes Benchmarking aktiv |
+| 2 | Profiler & Suchraum (Trials) | ✅ fertig |
 | 3 | Kür – Heuristiken & Framework-Vergleich | ⬜ offen |
 
 ---
@@ -44,7 +44,7 @@ Stand: 2026-06-25
 - [x] **Benchmark misst den ECHTEN JIT-Kernel** — jeder Trial wird mit `g++ -O3 -march=native -fopenmp` kompiliert, auf echten Daten vermessen (Best-of-5 × 200 Iterationen) und liefert reale GFLOPS
 - [x] **Korrektheits-Validierung pro Trial** — inkorrekte/racy Konfigurationen (parallelisierte Reduktionsachse) werden automatisch verworfen
 - [x] **Codegen verwendet die getunten Parameter** — `generateSourceCode` ist parametrisch (Split, Loop-Order, Parallel-Achse); `main.cpp` verbaut die real beste Konfiguration
-- [ ] Early-Stopping / „Regress-Verfall" (Abbruch bei stagnierender Verbesserung)
+- [x] **Early-Stopping / „Regress-Verfall"** — Patience-Counter (Stagnations-Abbruch), Min-Delta gegen Jitter, reproduzierbares Shuffle, hartes Zeit-Budget als Sicherheitsnetz — [autotuner.cpp](autotuner/autotuner.cpp)
 
 ---
 
@@ -65,7 +65,7 @@ Stand: 2026-06-25
 
 1. ~~**Benchmark auf echten JIT-Kernel umstellen**~~ ✅ erledigt — reale Messung + Korrektheits-Check pro Trial.
 2. ~~**Codegen parametrisieren**~~ ✅ erledigt — getunte Parameter fließen in den Kernel, Best-Config wird verbaut.
-3. **Early-Stopping** in die Trial-Schleife einbauen (Stufe 2/3).
+3. ~~**Early-Stopping**~~ ✅ erledigt — Patience + Min-Delta + Shuffle + Zeit-Budget.
 4. **Suchheuristik** (Simulated Annealing o.ä.) auf den jetzt validen Suchraum aufsetzen (Stufe 3).
 5. **SME-/NEON-Intrinsics-Codegen-Pfad** ergänzen (Stufe 3) — aktuell skalarer Kern mit `-O3 -march=native`-Autovektorisierung.
 6. **Framework-Vergleich + Visualisierung** als Abschluss-Evaluation (Stufe 3).

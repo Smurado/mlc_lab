@@ -17,6 +17,18 @@ struct TuningConfig {
     }
 };
 
+struct AutotunerOptions {
+    int patience = 20;               // Trials ohne Verbesserung bis zum Abbruch
+    double minImprovementRel = 0.01; // relative Schwelle (1 %) fuer "neuer Best"
+    unsigned seed = 42;              // Seed fuer reproduzierbares Shuffle
+    bool shuffle = true;             // Suchraum vor der Iteration mischen
+    double timeBudgetMs = 60000.0;   // harte Abbruchgrenze (Sicherheitsnetz)
+};
+
 // Startet den Autotuning-Prozess basierend auf einer Start-IR und liefert die
-// beste (real gemessene) Konfiguration zurueck.
+// beste (real gemessene) Konfiguration zurueck. Verwendet Default-Optionen.
 TuningConfig runAutotuner(const TEIR& baseIr);
+
+// Startet den Autotuning-Prozess mit expliziten Optionen (Early-Stopping,
+// Shuffle, Zeit-Budget).
+TuningConfig runAutotuner(const TEIR& baseIr, const AutotunerOptions& opts);
