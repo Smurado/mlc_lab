@@ -3,150 +3,201 @@
 #include "autotuner.hpp"
 #include "passes.hpp"
 #include "codegen.hpp"
+
+#include <cstdlib>
+#include <cmath>
 #include <iostream>
 #include <vector>
-#include <cstdlib>
-#include <dlfcn.h>   // Erforderlich fuer dlopen, dlsym, dlclose
-#include <cmath>
+#include <dlfcn.h>
 
-int main() {
-    try {
+int main()
+{
+    try
+    {
         std::cout << "======================================================\n";
         std::cout << "   TEIR Autotuner - Echtes JIT-Benchmarking\n";
         std::cout << "======================================================\n\n";
 
-        // 1. Basis-IR laden (Datei per Env-Variable waehlbar, Default: input.teir)
+        //----------------------------------------------------------
+        // IRs laden
+        //----------------------------------------------------------
+
         const char* envInput = std::getenv("TEIR_INPUT");
-        const std::string inputFile = envInput ? envInput : "input.teir";
-        std::cout << "[INFO] Lade IR aus: " << inputFile << "\n";
-        TEIR irBase = parseTEIR(inputFile);
+        const std::string inputFile = envInput ? envInput : "input.csv";
 
-        // 2. Autotuner-Optionen konfigurieren
-        //    Strategie ist hier zentral umschaltbar fuer Vergleichslaeufe.
-        AutotunerOptions opts;
-        // Wahl der Suchstrategie (zur Laufzeit z.B. per ENV-Variable moeglich):
-        const char* envStrategy = std::getenv("TEIR_STRATEGY");
-        if (envStrategy) {
-            std::string s(envStrategy);
-            if (s == "random" || s == "RANDOM") {
-                opts.strategy = SearchStrategy::RANDOM_SEARCH;
-            } else if (s == "sa" || s == "SA" || s == "annealing") {
-                opts.strategy = SearchStrategy::SIMULATED_ANNEALING;
-            } else if (s == "ga" || s == "GA" || s == "genetic") {
-                opts.strategy = SearchStrategy::GENETIC;
-            }
-        }
-        // Zeit-Budget fuer Vergleichslaeufe reduzieren, falls per Env gesetzt
-        const char* envBudget = std::getenv("TEIR_TIME_BUDGET_MS");
-        if (envBudget) {
-            opts.timeBudgetMs = std::stod(envBudget);
-        }
-        // Backend-Auswahl: scalar (Default) oder sme
-        const char* envBackend = std::getenv("TEIR_BACKEND");
-        if (envBackend) {
-            std::string b(envBackend);
-            if (b == "sme" || b == "SME") {
-                opts.backend = Backend::SME;
-            }
-        }
+        std::cout << "[INFO] Lade IRs aus CSV: " << inputFile << "\n";
 
-        // 3. Autotuning ausführen: liefert die real beste Konfiguration zurück
-        TuningConfig best = runAutotuner(irBase, opts);
+        std::vector<TEIR> IRs = parseCSV(inputFile);
 
-        // 3. Bestes Schedule tatsächlich anwenden & Code generieren
-        std::cout << "\n[INFO] Wende das gefundene Optimum auf die IR an...\n";
-        TEIR bestIr = irBase;
-        splitOuterAxis(bestIr, "p", best.split_factor);
-        reorderSchedule(bestIr, best.loop_order);
-        for (auto& it : bestIr.schedule) it.policy = Policy::Sequential;
-        if (!best.parallel_axis.empty()) {
-            makeParallel(bestIr, best.parallel_axis);
-        }
-        bestIr.unrollFactor = best.unroll_factor;
-        bestIr.backend = opts.backend;
+        //----------------------------------------------------------
+        // Alle IRs bearbeiten
+        //----------------------------------------------------------
 
-        std::string kernelCode = generateSourceCode(bestIr);
-        writeCodeToFile("generated_kernel.cpp", kernelCode);
-
-        // ==========================================
-        // FINALE JIT COMPILATION (On-the-fly)
-        // ==========================================
-        std::cout << "\n[JIT] Kompiliere 'generated_kernel.cpp' zu Shared Library...\n";
-        
-        // Shell-Befehl zur Kompilierung der finalen .so-Datei wird aus Makefile-Makros gebaut
-        std::string cmd = std::string(JIT_CXX) + " " + JIT_FLAGS + " " + JIT_LDFLAGS + " generated_kernel.cpp -o generated_kernel.so";
-        int compileStatus = std::system(cmd.c_str());
-        if (compileStatus != 0) {
-            throw std::runtime_error("JIT-Kompilierung fehlgeschlagen!");
-        }
-        std::cout << "[JIT SUCCESS] Shared Library 'generated_kernel.so' erfolgreich erzeugt.\n";
-
-        // Dynamic Loading der Library in den eigenen Adressraum
-        std::cout << "[JIT] Lade Bibliothek via dlopen()...\n";
-        void* handle = dlopen("./generated_kernel.so", RTLD_NOW);
-        if (!handle) {
-            throw std::runtime_error(std::string("dlopen fehlgeschlagen: ") + dlerror());
-        }
-
-        // Funktionspointer aus der Symboltabelle extrahieren
-        typedef void (*kernel_func_t)(const float*, const float*, float*);
-        kernel_func_t teir_contraction_jit = (kernel_func_t)dlsym(handle, "teir_contraction");
-        
-        const char* dlsym_error = dlerror();
-        if (dlsym_error) {
-            dlclose(handle);
-            throw std::runtime_error(std::string("dlsym fehlgeschlagen: ") + dlsym_error);
-        }
-        std::cout << "[JIT SUCCESS] Funktionspointer 'teir_contraction' erfolgreich gebunden.\n";
-
-        // ==========================================
-        // VALIDIERUNG MIT ECHTEN ARRAYS
-        // ==========================================
-        std::cout << "\n[VALIDATION] Allokiere echte Tensor-Workloads...\n";
-        // Dimensionen dynamisch aus der Basis-IR abgeleitet.
-        auto extentOf = [&](const std::string& name, int fb = 1) -> int {
-            for (const auto& ax : irBase.axes) if (ax.name == name) return ax.extent;
-            return fb;
-        };
-        const int P = extentOf("p");
-        const int R = extentOf("r");
-        const int T = extentOf("t");
-        std::vector<float> in0(static_cast<size_t>(R) * P, 1.0f);
-        std::vector<float> in1(static_cast<size_t>(P) * T, 2.0f);
-        std::vector<float> out(static_cast<size_t>(R) * T, 0.0f);
-
-        std::cout << "[VALIDATION] Fuehre JIT-kompilierten Kernel aus...\n";
-        teir_contraction_jit(in0.data(), in1.data(), out.data());
-
-        // Mathematische Verifizierung:
-        // out[r,t] = sum_p (1.0 * 2.0) = 2.0 * P
-        const float expected = 2.0f * static_cast<float>(P);
-        bool verificationPassed = true;
-        for (size_t i = 0; i < out.size(); ++i) {
-            if (std::abs(out[i] - expected) > 1e-4) {
-                verificationPassed = false;
-                std::cout << "[ERROR] Abweichung bei Index " << i << ": Gefunden=" << out[i]
-                          << ", Erwartet=" << expected << "\n";
-                break;
-            }
-        }
-
-        if (verificationPassed) {
+        for (const auto& ir : IRs)
+        {
             std::cout << "\n======================================================\n";
-            std::cout << "   🎉 VALIDATION SUCCESSFUL! 🎉\n";
+            std::cout << "Running IR: " << ir.name << "\n";
             std::cout << "======================================================\n";
-            std::cout << "  Der JIT-generierte, real getunte Kernel rechnet zu\n";
-            std::cout << "  100% mathematisch korrekt. Element[0] = " << out[0] << "\n";
-        } else {
-            std::cout << "[FAIL] Die Berechnung lieferte falsche Werte.\n";
+
+            //------------------------------------------------------
+            // Autotuner konfigurieren
+            //------------------------------------------------------
+
+            AutotunerOptions opts;
+
+            if (const char* envStrategy = std::getenv("TEIR_STRATEGY"))
+            {
+                std::string s(envStrategy);
+
+                if (s == "random" || s == "RANDOM")
+                    opts.strategy = SearchStrategy::RANDOM_SEARCH;
+                else if (s == "sa" || s == "SA" || s == "annealing")
+                    opts.strategy = SearchStrategy::SIMULATED_ANNEALING;
+                else if (s == "ga" || s == "GA" || s == "genetic")
+                    opts.strategy = SearchStrategy::GENETIC;
+            }
+
+            if (const char* envBudget = std::getenv("TEIR_TIME_BUDGET_MS"))
+            {
+                opts.timeBudgetMs = std::stod(envBudget);
+            }
+
+            if (const char* envBackend = std::getenv("TEIR_BACKEND"))
+            {
+                std::string b(envBackend);
+
+                if (b == "sme" || b == "SME")
+                    opts.backend = Backend::SME;
+            }
+
+            //------------------------------------------------------
+            // Autotuning
+            //------------------------------------------------------
+
+            TuningConfig best = runAutotuner(ir, opts);
+
+            std::cout << "\n[INFO] Wende das gefundene Optimum auf die IR an...\n";
+
+            TEIR bestIr = ir;
+
+            splitOuterAxis(bestIr, "p", best.split_factor);
+            reorderSchedule(bestIr, best.loop_order);
+
+            for (auto& it : bestIr.schedule)
+                it.policy = Policy::Sequential;
+
+            if (!best.parallel_axis.empty())
+                makeParallel(bestIr, best.parallel_axis);
+
+            bestIr.unrollFactor = best.unroll_factor;
+            bestIr.backend = opts.backend;
+
+            //------------------------------------------------------
+            // Code generieren
+            //------------------------------------------------------
+
+            std::string kernelCode = generateSourceCode(bestIr);
+            writeCodeToFile("generated_kernel.cpp", kernelCode);
+
+            //------------------------------------------------------
+            // JIT
+            //------------------------------------------------------
+
+            std::cout << "\n[JIT] Kompiliere Kernel...\n";
+
+            std::string cmd =
+                std::string(JIT_CXX) + " " +
+                JIT_FLAGS + " " +
+                JIT_LDFLAGS +
+                " generated_kernel.cpp -o generated_kernel.so";
+
+            if (std::system(cmd.c_str()) != 0)
+                throw std::runtime_error("JIT compilation failed.");
+
+            void* handle = dlopen("./generated_kernel.so", RTLD_NOW);
+
+            if (!handle)
+                throw std::runtime_error(dlerror());
+
+            //------------------------------------------------------
+            // Symbol laden
+            //------------------------------------------------------
+
+            std::string symbolName = "teir_" + ir.name;
+
+            typedef void (*kernel_func_t)(
+                const float*,
+                const float*,
+                float*);
+
+            kernel_func_t kernel =
+                reinterpret_cast<kernel_func_t>(
+                    dlsym(handle, symbolName.c_str()));
+
+            if (const char* err = dlerror())
+            {
+                dlclose(handle);
+                throw std::runtime_error(err);
+            }
+
+            std::cout << "[JIT SUCCESS] Symbol "
+                      << symbolName
+                      << " geladen.\n";
+
+            //------------------------------------------------------
+            // Validierung
+            //------------------------------------------------------
+
+            auto extentOf =
+                [&](const std::string& name, int fallback = 1)
+            {
+                for (const auto& ax : ir.axes)
+                    if (ax.name == name)
+                        return ax.extent;
+
+                return fallback;
+            };
+
+            const int P = extentOf("p");
+            const int R = extentOf("r");
+            const int T = extentOf("t");
+
+            std::vector<float> in0(R * P, 1.0f);
+            std::vector<float> in1(P * T, 2.0f);
+            std::vector<float> out(R * T, 0.0f);
+
+            kernel(in0.data(), in1.data(), out.data());
+
+            float expected = 2.0f * P;
+
+            bool ok = true;
+
+            for (float v : out)
+            {
+                if (std::abs(v - expected) > 1e-4f)
+                {
+                    ok = false;
+                    break;
+                }
+            }
+
+            if (ok)
+            {
+                std::cout << "[SUCCESS] Validation passed.\n";
+            }
+            else
+            {
+                std::cout << "[FAILED] Validation failed.\n";
+            }
+
+            dlclose(handle);
         }
-
-        // Library sauber entladen
-        dlclose(handle);
-
-    } catch (const std::exception& e) {
-        std::cerr << "[ERROR] Kritischer Fehler: " << e.what() << "\n";
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "[ERROR] " << e.what() << '\n';
         return 1;
     }
+
     return 0;
 }
