@@ -67,122 +67,99 @@ std::vector<std::string> parseCSVLine(const std::string& line)
 
 } // namespace
 
-std::vector<TEIR> parseCSV(const std::string& filename)
+TEIR parseCSV(const std::string& filename)
 {
     std::ifstream file(filename);
 
     if (!file.is_open())
         throw std::runtime_error("Cannot open CSV file: " + filename);
 
-    std::vector<TEIR> kernels;
-
     std::string line;
 
     // Header überspringen
     std::getline(file, line);
 
-    // Alle Datenzeilen lesen
-    while (std::getline(file, line))
+    // Erste Datenzeile lesen
+    if (!std::getline(file, line))
+        throw std::runtime_error("CSV file is empty.");
+
+    auto cols = parseCSVLine(line);
+
+    if (cols.size() != 6)
+        throw std::runtime_error("Expected exactly 6 CSV columns.");
+
+    TEIR ir;
+
+    //--------------------------------------------------
+    // Name
+    //--------------------------------------------------
+
+    ir.name = cols[0];
+
+    //--------------------------------------------------
+    // Tensoren
+    //--------------------------------------------------
+
+    for (const auto& t : split(removeQuotes(cols[1]), ';'))
     {
-        if (line.empty())
-            continue;
+        auto parts = split(t, ':');
 
-        auto cols = parseCSVLine(line);
+        if (parts.size() != 2)
+            throw std::runtime_error("Invalid tensor: " + t);
 
-        if (cols.size() != 6)
-            throw std::runtime_error(
-                "Expected exactly 6 CSV columns.");
-
-        TEIR ir;
-
-        //--------------------------------------------------
-        // Name
-        //--------------------------------------------------
-
-        ir.name = cols[0];
-
-        //--------------------------------------------------
-        // Tensoren
-        //--------------------------------------------------
-
-        for (const auto& t : split(removeQuotes(cols[1]), ';'))
-        {
-            auto parts = split(t, ':');
-
-            if (parts.size() != 2)
-                throw std::runtime_error(
-                    "Invalid tensor: " + t);
-
-            ir.tensors.push_back(
-            {
-                parts[0],
-                parts[1]
-            });
-        }
-
-        //--------------------------------------------------
-        // Achsen
-        //--------------------------------------------------
-
-        for (const auto& a : split(removeQuotes(cols[2]), ';'))
-        {
-            auto parts = split(a, ':');
-
-            if (parts.size() != 2)
-                throw std::runtime_error(
-                    "Invalid axis: " + a);
-
-            ir.axes.push_back(
-            {
-                parts[0],
-                std::stoi(parts[1])
-            });
-        }
-
-        //--------------------------------------------------
-        // Primitives
-        //--------------------------------------------------
-
-        for (const auto& p : split(removeQuotes(cols[3]), ';'))
-        {
-            ir.primitives.push_back(p);
-        }
-
-        //--------------------------------------------------
-        // Schedule
-        //--------------------------------------------------
-
-        for (const auto& s : split(removeQuotes(cols[4]), ';'))
-        {
-            auto parts = split(s, ':');
-
-            if (parts.size() != 2)
-                throw std::runtime_error(
-                    "Invalid schedule entry: " + s);
-
-            Policy pol =
-                (parts[1] == "parallel")
-                    ? Policy::Parallel
-                    : Policy::Sequential;
-
-            ir.schedule.push_back(
-            {
-                parts[0],
-                pol
-            });
-        }
-
-        //--------------------------------------------------
-        // Invokes
-        //--------------------------------------------------
-
-        for (const auto& inv : split(removeQuotes(cols[5]), ';'))
-        {
-            ir.invokes.push_back(inv);
-        }
-
-        kernels.push_back(std::move(ir));
+        ir.tensors.push_back({parts[0], parts[1]});
     }
 
-    return kernels;
+    //--------------------------------------------------
+    // Achsen
+    //--------------------------------------------------
+
+    for (const auto& a : split(removeQuotes(cols[2]), ';'))
+    {
+        auto parts = split(a, ':');
+
+        if (parts.size() != 2)
+            throw std::runtime_error("Invalid axis: " + a);
+
+        ir.axes.push_back({parts[0], std::stoi(parts[1])});
+    }
+
+    //--------------------------------------------------
+    // Primitives
+    //--------------------------------------------------
+
+    for (const auto& p : split(removeQuotes(cols[3]), ';'))
+    {
+        ir.primitives.push_back(p);
+    }
+
+    //--------------------------------------------------
+    // Schedule
+    //--------------------------------------------------
+
+    for (const auto& s : split(removeQuotes(cols[4]), ';'))
+    {
+        auto parts = split(s, ':');
+
+        if (parts.size() != 2)
+            throw std::runtime_error("Invalid schedule entry: " + s);
+
+        Policy pol =
+            (parts[1] == "parallel")
+                ? Policy::Parallel
+                : Policy::Sequential;
+
+        ir.schedule.push_back({parts[0], pol});
+    }
+
+    //--------------------------------------------------
+    // Invokes
+    //--------------------------------------------------
+
+    for (const auto& inv : split(removeQuotes(cols[5]), ';'))
+    {
+        ir.invokes.push_back(inv);
+    }
+
+    return ir;
 }
