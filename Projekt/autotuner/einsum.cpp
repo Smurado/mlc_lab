@@ -46,6 +46,17 @@ int extentOfChar(const TEIR& ir, char c) {
     std::string name(1, c);
     for (const auto& ax : ir.axes)
         if (ax.name == name) return ax.extent;
+
+    std::string name0 = name + "0";
+    std::string name1 = name + "1";
+    int e0 = 1, e1 = 1;
+    bool found0 = false, found1 = false;
+    for (const auto& ax : ir.axes) {
+        if (ax.name == name0) { e0 = ax.extent; found0 = true; }
+        if (ax.name == name1) { e1 = ax.extent; found1 = true; }
+    }
+    if (found0 && found1) return e0 * e1;
+
     return 1;
 }
 
@@ -116,4 +127,35 @@ void referenceEinsum(const TEIR& ir, const float* in0, const float* in1, float* 
         }
         if (pos < 0) break;
     }
+}
+
+std::string axisExpr(const TEIR& ir, char c) {
+    std::string name(1, c);
+    for (const auto& ax : ir.axes)
+        if (ax.name == name) return name;
+
+    std::string name0 = name + "0";
+    std::string name1 = name + "1";
+    bool found0 = false, found1 = false;
+    int e1 = 1;
+    for (const auto& ax : ir.axes) {
+        if (ax.name == name0) found0 = true;
+        if (ax.name == name1) { found1 = true; e1 = ax.extent; }
+    }
+    if (found0 && found1)
+        return "(" + name0 + " * " + std::to_string(e1) + " + " + name1 + ")";
+
+    return name;
+}
+
+bool isReduceAxis(const std::string& schedAxis, const EinsumSpec& spec) {
+    if (schedAxis.size() == 1) {
+        char c = schedAxis[0];
+        return std::find(spec.reduce_axes.begin(), spec.reduce_axes.end(), c) != spec.reduce_axes.end();
+    }
+    if (schedAxis.size() == 2 && (schedAxis[1] == '0' || schedAxis[1] == '1')) {
+        char parent = schedAxis[0];
+        return std::find(spec.reduce_axes.begin(), spec.reduce_axes.end(), parent) != spec.reduce_axes.end();
+    }
+    return false;
 }

@@ -364,9 +364,10 @@ static std::string generateScalarKernel(const TEIR& ir) {
 }
 
 // ============================================================================
-// Einsum-Backend: Allgemeiner Tensorkontraktions-Codegen
+// Einsum-Backend: Allgemeiner, schedule-aware Tensorkontraktions-Codegen
 // out[out_idx] = sum_{reduce_idx} in0[in0_idx] * in1[in1_idx]
-// Ignoriert Schedule (Schicht 1); Schicht 2 generalisiert den Autotuner.
+// Nutzt ir.schedule fuer Schleifenreihenfolge, Parallelisierung, Unroll.
+// Split-Sub-Achsen (axis0/axis1) werden automatisch rekonstruiert.
 // ============================================================================
 
 static std::string generateEinsumKernel(const TEIR& ir) {
@@ -377,8 +378,9 @@ static std::string generateEinsumKernel(const TEIR& ir) {
     int out_size = tensorElements(spec.out_idx, ir);
 
     std::stringstream ss;
-    ss << "// Auto-generiert vom TEIR-Autotuner (Einsum-Backend)\n";
+    ss << "// Auto-generiert vom TEIR-Autotuner (Einsum-Backend, schedule-aware)\n";
     ss << "// " << ir.einsum << "\n";
+    ss << "#include <omp.h>\n";
     ss << "extern \"C\" {\n";
     ss << "void teir_" << ir.name
        << "(const float* __restrict__ in0, const float* __restrict__ in1, float* __restrict__ out) {\n";
@@ -386,57 +388,72 @@ static std::string generateEinsumKernel(const TEIR& ir) {
     ss << "    for (int i = 0; i < " << out_size << "; ++i) out[i] = 0.0f;\n\n";
 
     int indent = 4;
-    for (char c : spec.out_axes) {
-        int ext = extentOfChar(ir, c);
-        std::string pad(indent, ' ');
-        ss << pad << "for (int " << c << " = 0; " << c << " < " << ext << "; ++" << c << ") {\n";
-        indent += 4;
-    }
+    const int nIters = (int)ir.schedule.size();
+    bool accInitialized = false;
+    int firstRedIdx = -1, lastRedIdx = -1;
 
-    {
-        std::string pad(indent, ' ');
-        ss << pad << "float acc = 0.0f;\n";
-    }
-
-    for (char c : spec.reduce_axes) {
-        int ext = extentOfChar(ir, c);
-        std::string pad(indent, ' ');
-        ss << pad << "for (int " << c << " = 0; " << c << " < " << ext << "; ++" << c << ") {\n";
-        indent += 4;
-    }
-
-    {
-        std::string pad(indent, ' ');
-        ss << pad << "acc += in0[";
-        for (int i = 0; i < (int)spec.in0_idx.size(); ++i) {
-            if (i > 0) ss << " + ";
-            ss << spec.in0_idx[i] << " * " << in0_strides[i];
+    for (int i = 0; i < nIters; ++i) {
+        if (isReduceAxis(ir.schedule[i].axis, spec)) {
+            if (firstRedIdx < 0) firstRedIdx = i;
+            lastRedIdx = i;
         }
-        ss << "] * in1[";
-        for (int i = 0; i < (int)spec.in1_idx.size(); ++i) {
-            if (i > 0) ss << " + ";
-            ss << spec.in1_idx[i] << " * " << in1_strides[i];
-        }
-        ss << "];\n";
     }
 
-    for (size_t i = 0; i < spec.reduce_axes.size(); ++i) {
+    for (int i = 0; i < nIters; ++i) {
+        const auto& iter = ir.schedule[i];
+        const std::string& axisName = iter.axis;
+        int extent = extentOf(ir, axisName);
+        std::string pad(indent, ' ');
+
+        if (i == firstRedIdx) {
+            ss << pad << "float acc = 0.0f;\n";
+            accInitialized = true;
+        }
+
+        if (iter.policy == Policy::Parallel) {
+            ss << pad << "#pragma omp parallel for\n";
+        }
+        if (i == nIters - 1 && ir.unrollFactor > 1) {
+            ss << pad << "#pragma GCC unroll(" << ir.unrollFactor << ")\n";
+        }
+
+        ss << pad << "for (int " << axisName << " = 0; " << axisName
+           << " < " << extent << "; ++" << axisName << ") {\n";
+        indent += 4;
+
+        if (i == lastRedIdx) {
+            std::string ipad(indent, ' ');
+            ss << ipad << "acc += in0[";
+            for (int j = 0; j < (int)spec.in0_idx.size(); ++j) {
+                if (j > 0) ss << " + ";
+                ss << axisExpr(ir, spec.in0_idx[j]) << " * " << in0_strides[j];
+            }
+            ss << "] * in1[";
+            for (int j = 0; j < (int)spec.in1_idx.size(); ++j) {
+                if (j > 0) ss << " + ";
+                ss << axisExpr(ir, spec.in1_idx[j]) << " * " << in1_strides[j];
+            }
+            ss << "];\n";
+        }
+    }
+
+    for (int i = nIters - 1; i >= firstRedIdx; --i) {
         indent -= 4;
         std::string pad(indent, ' ');
         ss << pad << "}\n";
     }
 
-    {
+    if (accInitialized) {
         std::string pad(indent, ' ');
         ss << pad << "out[";
-        for (int i = 0; i < (int)spec.out_idx.size(); ++i) {
-            if (i > 0) ss << " + ";
-            ss << spec.out_idx[i] << " * " << out_strides[i];
+        for (int j = 0; j < (int)spec.out_idx.size(); ++j) {
+            if (j > 0) ss << " + ";
+            ss << axisExpr(ir, spec.out_idx[j]) << " * " << out_strides[j];
         }
         ss << "] = acc;\n";
     }
 
-    for (size_t i = 0; i < spec.out_axes.size(); ++i) {
+    while (indent > 4) {
         indent -= 4;
         std::string pad(indent, ' ');
         ss << pad << "}\n";

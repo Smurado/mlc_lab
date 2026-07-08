@@ -1,6 +1,7 @@
 #include "autotuner.hpp"
 #include "passes.hpp"
 #include "benchmark.hpp"
+#include "einsum.hpp"
 #include <iostream>
 #include <algorithm>
 #include <cmath>
@@ -11,13 +12,16 @@
 #include <unordered_set>
 
 // =====================================================================
-// Suchraum-Generierung (wie bisher, mit regelbasiertem Pruning)
+// Suchraum-Generierung
+// GEMM-Modus (kein einsum): hardcoded p0/p1/r/t wie bisher.
+// Einsum-Modus: Suchraum aus Einsum abgeleitet - Reduktions-Achsen innen,
+// Output-Achsen aussen, Split auf einer Reduktions-Achse, Parallel auf
+// Output-Achsen. Vermeidet Suchraum-Explosion durch Out!×Red! statt N!.
 // =====================================================================
 
-std::vector<TuningConfig> generateSearchSpace(const TEIR& baseIr) {
+static std::vector<TuningConfig> generateSearchSpaceGEMM(const TEIR& baseIr) {
     std::vector<TuningConfig> space;
 
-    // Erweiterte Split-Faktoren (inkl. 1 = kein Split, 128 = voll)
     std::vector<int> potentialFactors = {1, 2, 4, 8, 16, 32, 64, 128};
 
     int pExtent = 128;
@@ -25,7 +29,6 @@ std::vector<TuningConfig> generateSearchSpace(const TEIR& baseIr) {
         if (ax.name == "p") { pExtent = ax.extent; break; }
     }
 
-    // Alle 24 Permutationen von {p0, p1, r, t} via next_permutation
     std::vector<std::string> baseOrder = {"p0", "p1", "r", "t"};
     std::sort(baseOrder.begin(), baseOrder.end());
     std::vector<std::vector<std::string>> orders;
@@ -34,26 +37,97 @@ std::vector<TuningConfig> generateSearchSpace(const TEIR& baseIr) {
     } while (std::next_permutation(baseOrder.begin(), baseOrder.end()));
 
     std::vector<std::string> parallelOptions = {"", "p0", "r", "t", "p1"};
-
-    // Unroll-Faktoren fuer die innerste Schleife
     std::vector<int> unrollFactors = {1, 2, 4, 8, 16};
 
     for (int factor : potentialFactors) {
         if (pExtent % factor != 0) continue;
-
         for (const auto& order : orders) {
             for (const auto& parallelAxis : parallelOptions) {
-                // Pruning: parallelisiere nie die innerste Schleife
-                if (!parallelAxis.empty() && !order.empty() && order.back() == parallelAxis) {
+                if (!parallelAxis.empty() && !order.empty() && order.back() == parallelAxis)
                     continue;
-                }
                 for (int unroll : unrollFactors) {
-                    space.push_back({factor, order, parallelAxis, unroll});
+                    space.push_back({"p", factor, order, parallelAxis, unroll});
                 }
             }
         }
     }
     return space;
+}
+
+static std::vector<TuningConfig> generateSearchSpaceEinsum(const TEIR& baseIr) {
+    std::vector<TuningConfig> space;
+
+    EinsumSpec spec = parseEinsum(baseIr.einsum);
+
+    std::vector<std::string> outAxes, reduceAxes;
+    for (char c : spec.out_axes) outAxes.push_back(std::string(1, c));
+    for (char c : spec.reduce_axes) reduceAxes.push_back(std::string(1, c));
+
+    std::vector<int> splitFactors = {1, 2, 4, 8, 16, 32, 64};
+    std::vector<int> unrollFactors = {1, 2, 4, 8, 16};
+
+    // Permutationen der Output-Achsen (außen)
+    std::sort(outAxes.begin(), outAxes.end());
+    std::vector<std::vector<std::string>> outPerms;
+    do {
+        outPerms.push_back(outAxes);
+    } while (std::next_permutation(outAxes.begin(), outAxes.end()));
+
+    // Permutationen der Reduktions-Achsen (innen, ohne Split)
+    std::sort(reduceAxes.begin(), reduceAxes.end());
+    std::vector<std::vector<std::string>> redPermsBase;
+    do {
+        redPermsBase.push_back(reduceAxes);
+    } while (std::next_permutation(reduceAxes.begin(), reduceAxes.end()));
+
+    for (const std::string& splitAxis : reduceAxes) {
+        int splitExtent = extentOfChar(baseIr, splitAxis[0]);
+
+        for (int factor : splitFactors) {
+            if (factor > 1 && splitExtent % factor != 0) continue;
+
+            std::vector<std::string> otherRed;
+            for (const auto& r : reduceAxes)
+                if (r != splitAxis) otherRed.push_back(r);
+
+            std::sort(otherRed.begin(), otherRed.end());
+            std::vector<std::vector<std::string>> otherRedPerms;
+            do {
+                otherRedPerms.push_back(otherRed);
+            } while (std::next_permutation(otherRed.begin(), otherRed.end()));
+
+            for (const auto& outPerm : outPerms) {
+                for (const auto& otherRedPerm : otherRedPerms) {
+                    std::vector<std::string> loopOrder = outPerm;
+                    std::string split0 = splitAxis + "0";
+                    std::string split1 = splitAxis + "1";
+                    loopOrder.push_back(split0);
+                    loopOrder.push_back(split1);
+                    for (const auto& r : otherRedPerm) loopOrder.push_back(r);
+
+                    std::vector<std::string> parallelOptions;
+                    parallelOptions.push_back("");
+                    for (const auto& o : outPerm) parallelOptions.push_back(o);
+                    parallelOptions.push_back(split0);
+
+                    for (const auto& parallel : parallelOptions) {
+                        if (!parallel.empty() && loopOrder.back() == parallel)
+                            continue;
+                        for (int unroll : unrollFactors) {
+                            space.push_back({splitAxis, factor, loopOrder, parallel, unroll});
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return space;
+}
+
+std::vector<TuningConfig> generateSearchSpace(const TEIR& baseIr) {
+    if (!baseIr.einsum.empty())
+        return generateSearchSpaceEinsum(baseIr);
+    return generateSearchSpaceGEMM(baseIr);
 }
 
 // =====================================================================
@@ -102,7 +176,8 @@ struct SearchContext {
 
     // Hash einer Config, um besuchte Trials nicht doppelt zu evaluieren.
     size_t hashConfig(const TuningConfig& c) const {
-        size_t h = std::hash<int>{}(c.split_factor);
+        size_t h = std::hash<std::string>{}(c.split_axis);
+        h ^= std::hash<int>{}(c.split_factor) + 0x9e3779b9 + (h << 6) + (h >> 2);
         h ^= std::hash<int>{}(c.unroll_factor) + 0x9e3779b9 + (h << 6) + (h >> 2);
         h ^= std::hash<std::string>{}(c.parallel_axis) + 0x9e3779b9 + (h << 6) + (h >> 2);
         for (const auto& o : c.loop_order) {
@@ -120,7 +195,9 @@ struct SearchContext {
     BenchmarkResult evaluateTrial(const TuningConfig& config) {
         TEIR trialIr = baseIr;
 
-        splitOuterAxis(trialIr, "p", config.split_factor);
+        if (config.split_factor > 1 && !config.split_axis.empty()) {
+            splitOuterAxis(trialIr, config.split_axis, config.split_factor);
+        }
         reorderSchedule(trialIr, config.loop_order);
 
         for (auto& it : trialIr.schedule) it.policy = Policy::Sequential;
@@ -207,6 +284,7 @@ void printSummary(const SearchContext& ctx, const std::string& strategyName,
     }
     std::cout << "Gesamtlaufzeit: " << (totalMs / 1000.0) << " s\n";
     std::cout << "Beste Konfiguration:\n";
+    std::cout << "  - Split Axis:   " << (ctx.bestConfig.split_axis.empty() ? "none" : ctx.bestConfig.split_axis) << "\n";
     std::cout << "  - Split Factor: " << ctx.bestConfig.split_factor << "\n";
     std::cout << "  - Loop Order:   ";
     for (const auto& o : ctx.bestConfig.loop_order) std::cout << o << " ";
@@ -245,11 +323,10 @@ TuningConfig runRandomSearch(SearchContext& ctx,
 // Erzeugt einen zufaelligen Nachbarn einer Config durch kleine Mutation.
 TuningConfig mutateNeighbor(std::mt19937& rng, const TuningConfig& base,
                             const std::vector<TuningConfig>& space) {
-    // Wir waehlen einen zufaelligen Nachbarn aus dem Suchraum, der mindestens
-    // ein Gen mit base teilt (gleicher Split-Faktor ODER gleiche Loop-Order).
     std::vector<const TuningConfig*> candidates;
     for (const auto& c : space) {
-        if (c.split_factor == base.split_factor ||
+        if (c.split_axis == base.split_axis ||
+            c.split_factor == base.split_factor ||
             c.loop_order == base.loop_order) {
             candidates.push_back(&c);
         }
@@ -330,17 +407,18 @@ std::pair<TuningConfig, TuningConfig> crossover(std::mt19937& rng,
     TuningConfig child1 = a, child2 = b;
     std::uniform_real_distribution<double> coin(0.0, 1.0);
 
-    // Split-Faktor
+    if (coin(rng) < 0.5) {
+        child1.split_axis = b.split_axis;
+        child2.split_axis = a.split_axis;
+    }
     if (coin(rng) < 0.5) {
         child1.split_factor = b.split_factor;
         child2.split_factor = a.split_factor;
     }
-    // Loop-Order
     if (coin(rng) < 0.5) {
         child1.loop_order = b.loop_order;
         child2.loop_order = a.loop_order;
     }
-    // Parallel-Axis
     if (coin(rng) < 0.5) {
         child1.parallel_axis = b.parallel_axis;
         child2.parallel_axis = a.parallel_axis;
@@ -348,17 +426,17 @@ std::pair<TuningConfig, TuningConfig> crossover(std::mt19937& rng,
     return {child1, child2};
 }
 
-// Mutiert ein Gen zufaellig, bezogen auf den Suchraum.
 void mutate(std::mt19937& rng, TuningConfig& c,
             const std::vector<TuningConfig>& space) {
-    std::uniform_int_distribution<int> pickGene(0, 2);
+    std::uniform_int_distribution<int> pickGene(0, 3);
     std::uniform_int_distribution<int> pickSpace(0, (int)space.size() - 1);
 
     const TuningConfig& donor = space[pickSpace(rng)];
     switch (pickGene(rng)) {
-        case 0: c.split_factor = donor.split_factor; break;
-        case 1: c.loop_order = donor.loop_order; break;
-        case 2: c.parallel_axis = donor.parallel_axis; break;
+        case 0: c.split_axis = donor.split_axis; break;
+        case 1: c.split_factor = donor.split_factor; break;
+        case 2: c.loop_order = donor.loop_order; break;
+        case 3: c.parallel_axis = donor.parallel_axis; break;
     }
 }
 

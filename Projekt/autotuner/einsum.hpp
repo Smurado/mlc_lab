@@ -25,3 +25,7 @@ int tensorElements(const std::string& idx, const TEIR& ir);
 double einsumFlops(const TEIR& ir);
 
 void referenceEinsum(const TEIR& ir, const float* in0, const float* in1, float* out);
+
+std::string axisExpr(const TEIR& ir, char c);
+
+bool isReduceAxis(const std::string& schedAxis, const EinsumSpec& spec);
