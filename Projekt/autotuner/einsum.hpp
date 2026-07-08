@@ -29,3 +29,13 @@ void referenceEinsum(const TEIR& ir, const float* in0, const float* in1, float* 
 std::string axisExpr(const TEIR& ir, char c);
 
 bool isReduceAxis(const std::string& schedAxis, const EinsumSpec& spec);
+
+bool isGEMMForm(const EinsumSpec& spec);
+
+struct GEMMMapping {
+    char out0_axis;
+    char out1_axis;
+    char reduce_axis;
+};
+
+GEMMMapping extractGEMMMapping(const EinsumSpec& spec);

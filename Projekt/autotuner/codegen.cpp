@@ -463,8 +463,240 @@ static std::string generateEinsumKernel(const TEIR& ir) {
     return ss.str();
 }
 
+// ============================================================================
+// NEON-Backend fuer GEMM-foermige Einsum-Kontraktionen
+// out[out0,out1] = sum_red in0[out0,red] * in1[red,out1]
+// Generalisierte Version von generateNEONKernel mit Achsen-Namen aus Einsum.
+// ============================================================================
+
+static std::string generateNEONKernelGEMM(const TEIR& ir, const GEMMMapping& gm) {
+    std::stringstream ss;
+
+    const std::string M = std::string(1, gm.out0_axis);
+    const std::string N = std::string(1, gm.out1_axis);
+    const std::string K = std::string(1, gm.reduce_axis);
+    const std::string K0 = K + "0";
+    const std::string K1 = K + "1";
+
+    const int R = extentOfChar(ir, gm.out0_axis);
+    const int T = extentOfChar(ir, gm.out1_axis);
+
+    bool split = false;
+    int F = 1, P, P0 = 0;
+    if (extentOf(ir, K, -1) != -1) {
+        P = extentOf(ir, K);
+        P0 = P;
+    } else {
+        F = extentOf(ir, K1);
+        P0 = extentOf(ir, K0);
+        P = P0 * F;
+        split = true;
+    }
+
+    const int mBlocks = R / 4;
+    const int nBlocks = T / 4;
+
+    bool tBeforeR = false, parallelR = false, parallelT = false;
+    int rPos = -1, tPos = -1;
+    for (int i = 0; i < (int)ir.schedule.size(); ++i) {
+        const auto& it = ir.schedule[i];
+        if (it.axis == M) { rPos = i; if (it.policy == Policy::Parallel) parallelR = true; }
+        if (it.axis == N) { tPos = i; if (it.policy == Policy::Parallel) parallelT = true; }
+    }
+    if (rPos >= 0 && tPos >= 0 && tPos < rPos) tBeforeR = true;
+
+    const int unroll = ir.unrollFactor;
+
+    ss << "// Auto-generiert vom TEIR-Autotuner (NEON-Backend, GEMM-Einsum, 4x4)\n";
+    ss << "// " << ir.einsum << " | M=" << M << " N=" << N << " K=" << K
+       << " | K-Tile: " << F << " | Unroll: " << unroll << "\n";
+    ss << "#include <arm_neon.h>\n";
+    ss << "#include <omp.h>\n\n";
+    ss << "extern \"C\" {\n";
+    ss << "void teir_" << ir.name
+       << "(const float* __restrict__ in0, const float* __restrict__ in1, float* __restrict__ out) {\n";
+
+    ss << "    for (int i = 0; i < " << (R * T) << "; ++i) out[i] = 0.0f;\n\n";
+
+    if (tBeforeR) {
+        if (parallelT) ss << "    #pragma omp parallel for\n";
+        ss << "    for (int nb = 0; nb < " << nBlocks << "; ++nb) {\n";
+        ss << "        const int n = nb * 4;\n";
+        if (parallelR) ss << "        #pragma omp parallel for\n";
+        ss << "        for (int mb = 0; mb < " << mBlocks << "; ++mb) {\n";
+        ss << "            const int m = mb * 4;\n";
+    } else {
+        if (parallelR) ss << "    #pragma omp parallel for\n";
+        ss << "    for (int mb = 0; mb < " << mBlocks << "; ++mb) {\n";
+        ss << "        const int m = mb * 4;\n";
+        if (parallelT) ss << "        #pragma omp parallel for\n";
+        ss << "        for (int nb = 0; nb < " << nBlocks << "; ++nb) {\n";
+        ss << "            const int n = nb * 4;\n";
+    }
+
+    ss << "            float32x4_t acc0 = vdupq_n_f32(0.0f);\n";
+    ss << "            float32x4_t acc1 = vdupq_n_f32(0.0f);\n";
+    ss << "            float32x4_t acc2 = vdupq_n_f32(0.0f);\n";
+    ss << "            float32x4_t acc3 = vdupq_n_f32(0.0f);\n\n";
+
+    if (split) {
+        ss << "            for (int " << K0 << " = 0; " << K0 << " < " << P0 << "; ++" << K0 << ") {\n";
+        if (unroll > 1) ss << "                #pragma GCC unroll(" << unroll << ")\n";
+        ss << "                for (int " << K1 << " = 0; " << K1 << " < " << F << "; ++" << K1 << ") {\n";
+        ss << "                    const int " << K << " = " << K0 << " * " << F << " + " << K1 << ";\n";
+    } else {
+        ss << "            for (int " << K << " = 0; " << K << " < " << P << "; ++" << K << ") {\n";
+    }
+
+    ss << "                    const float* b_ptr = in1 + " << K << " * " << T << " + n;\n";
+    ss << "                    float32x4_t b_vec = vld1q_f32(b_ptr);\n";
+    ss << "                    acc0 = vmlaq_n_f32(acc0, b_vec, in0[(m + 0) * " << P << " + " << K << "]);\n";
+    ss << "                    acc1 = vmlaq_n_f32(acc1, b_vec, in0[(m + 1) * " << P << " + " << K << "]);\n";
+    ss << "                    acc2 = vmlaq_n_f32(acc2, b_vec, in0[(m + 2) * " << P << " + " << K << "]);\n";
+    ss << "                    acc3 = vmlaq_n_f32(acc3, b_vec, in0[(m + 3) * " << P << " + " << K << "]);\n";
+
+    if (split) {
+        ss << "                }\n";
+        ss << "            }\n\n";
+    } else {
+        ss << "            }\n\n";
+    }
+
+    ss << "            vst1q_f32(out + (m + 0) * " << T << " + n, acc0);\n";
+    ss << "            vst1q_f32(out + (m + 1) * " << T << " + n, acc1);\n";
+    ss << "            vst1q_f32(out + (m + 2) * " << T << " + n, acc2);\n";
+    ss << "            vst1q_f32(out + (m + 3) * " << T << " + n, acc3);\n";
+    ss << "        }\n";
+    ss << "    }\n\n";
+
+    ss << "    for (int m = " << (mBlocks * 4) << "; m < " << R << "; ++m)\n";
+    ss << "        for (int " << K << " = 0; " << K << " < " << P << "; ++" << K << ")\n";
+    ss << "            for (int t = 0; t < " << T << "; ++t)\n";
+    ss << "                out[m * " << T << " + t] += in0[m * " << P << " + " << K << "] * in1[" << K << " * " << T << " + t];\n";
+    ss << "    for (int m = 0; m < " << (mBlocks * 4) << "; ++m)\n";
+    ss << "        for (int " << K << " = 0; " << K << " < " << P << "; ++" << K << ")\n";
+    ss << "            for (int t = " << (nBlocks * 4) << "; t < " << T << "; ++t)\n";
+    ss << "                out[m * " << T << " + t] += in0[m * " << P << " + " << K << "] * in1[" << K << " * " << T << " + t];\n";
+
+    ss << "}\n}\n";
+    return ss.str();
+}
+
+// ============================================================================
+// SME-Backend fuer GEMM-foermige Einsum-Kontraktionen
+// Generalisierte Version von generateSMEKernel mit Achsen-Namen aus Einsum.
+// ============================================================================
+
+static std::string generateSMEKernelGEMM(const TEIR& ir, const GEMMMapping& gm) {
+    std::stringstream ss;
+
+    const std::string M = std::string(1, gm.out0_axis);
+    const std::string N = std::string(1, gm.out1_axis);
+    const std::string K = std::string(1, gm.reduce_axis);
+
+    const int R = extentOfChar(ir, gm.out0_axis);
+    const int T = extentOfChar(ir, gm.out1_axis);
+    const int P = extentOfChar(ir, gm.reduce_axis);
+
+    const int mBlocks = (R + 31) / 32;
+    const int nBlocks = (T + 31) / 32;
+
+    ss << "// Auto-generiert vom TEIR-Autotuner (SME-Backend, GEMM-Einsum)\n";
+    ss << "// " << ir.einsum << " | M=" << M << " N=" << N << " K=" << K << "\n";
+    ss << "#include <arm_neon.h>\n";
+    ss << "#include <cstdlib>\n\n";
+    ss << "extern \"C\" {\n";
+    ss << "__attribute__((target(\"sme\")))\n";
+    ss << "void teir_" << ir.name
+       << "(const float* __restrict__ in0, const float* __restrict__ in1, float* __restrict__ out) {\n";
+
+    ss << "    static float* A_t_cache = nullptr;\n";
+    ss << "    static const float* A_t_src = nullptr;\n";
+    ss << "    if (A_t_cache == nullptr || A_t_src != in0) {\n";
+    ss << "        if (A_t_cache == nullptr)\n";
+    ss << "            A_t_cache = (float*)malloc(" << (P * R) << " * sizeof(float));\n";
+    ss << "        A_t_src = in0;\n";
+    ss << "        for (int r = 0; r < " << R << "; ++r)\n";
+    ss << "            for (int p = 0; p < " << P << "; ++p)\n";
+    ss << "                A_t_cache[p * " << R << " + r] = in0[r * " << P << " + p];\n";
+    ss << "    }\n";
+    ss << "    float* A_t = A_t_cache;\n\n";
+
+    ss << "    asm volatile(\"smstart\");\n";
+    ss << "    asm volatile(\"ptrue p0.s\");\n\n";
+
+    ss << "    for (int mb = 0; mb < " << mBlocks << "; ++mb) {\n";
+    ss << "        for (int nb = 0; nb < " << nBlocks << "; ++nb) {\n";
+    ss << "            const int m = mb * 32;\n";
+    ss << "            const int n = nb * 32;\n\n";
+    ss << "            asm volatile(\"zero {za}\");\n\n";
+
+    ss << "            for (int k = 0; k < " << P << "; ++k) {\n";
+    ss << "                const float* a_ptr = A_t + k * " << R << " + m;\n";
+    ss << "                const float* b_ptr = in1 + k * " << T << " + n;\n\n";
+
+    ss << "                asm volatile(\"ld1w {z0.s}, p0/z, [%0]\\n\\t\"\n";
+    ss << "                             \"ld1w {z1.s}, p0/z, [%1]\\n\\t\"\n";
+    ss << "                             \"ld1w {z2.s}, p0/z, [%2]\\n\\t\"\n";
+    ss << "                             \"ld1w {z3.s}, p0/z, [%3]\\n\\t\"\n";
+    ss << "                             : : \"r\"(a_ptr), \"r\"(a_ptr + 16),\n";
+    ss << "                                 \"r\"(b_ptr), \"r\"(b_ptr + 16)\n";
+    ss << "                             : \"z0\", \"z1\", \"z2\", \"z3\", \"memory\");\n\n";
+
+    ss << "                asm volatile(\n";
+    ss << "                    \"fmopa za0.s, p0/m, p0/m, z0.s, z2.s\\n\\t\"\n";
+    ss << "                    \"fmopa za1.s, p0/m, p0/m, z1.s, z2.s\\n\\t\"\n";
+    ss << "                    \"fmopa za2.s, p0/m, p0/m, z0.s, z3.s\\n\\t\"\n";
+    ss << "                    \"fmopa za3.s, p0/m, p0/m, z1.s, z3.s\\n\\t\"\n";
+    ss << "                    : : : \"memory\");\n";
+    ss << "            }\n\n";
+
+    ss << "            for (int row = 0; row < 16; ++row) {\n";
+    ss << "                float* out_ptr0 = out + (m + row) * " << T << " + n;\n";
+    ss << "                float* out_ptr1 = out_ptr0 + 16;\n";
+    ss << "                register int row_reg asm(\"w12\") = row;\n";
+    ss << "                asm volatile(\n";
+    ss << "                    \"mova z4.s, p0/m, za0v.s[w12, 0]\\n\\t\"\n";
+    ss << "                    \"st1w {z4.s}, p0, [%[o0]]\\n\\t\"\n";
+    ss << "                    \"mova z4.s, p0/m, za2v.s[w12, 0]\\n\\t\"\n";
+    ss << "                    \"st1w {z4.s}, p0, [%[o1]]\\n\\t\"\n";
+    ss << "                    : \n";
+    ss << "                    : [o0] \"r\"(out_ptr0), [o1] \"r\"(out_ptr1)\n";
+    ss << "                    : \"z4\", \"w12\", \"memory\");\n";
+    ss << "            }\n";
+    ss << "            for (int row = 0; row < 16; ++row) {\n";
+    ss << "                float* out_ptr0 = out + (m + 16 + row) * " << T << " + n;\n";
+    ss << "                float* out_ptr1 = out_ptr0 + 16;\n";
+    ss << "                register int row_reg asm(\"w12\") = row;\n";
+    ss << "                asm volatile(\n";
+    ss << "                    \"mova z4.s, p0/m, za1v.s[w12, 0]\\n\\t\"\n";
+    ss << "                    \"st1w {z4.s}, p0, [%[o0]]\\n\\t\"\n";
+    ss << "                    \"mova z4.s, p0/m, za3v.s[w12, 0]\\n\\t\"\n";
+    ss << "                    \"st1w {z4.s}, p0, [%[o1]]\\n\\t\"\n";
+    ss << "                    : \n";
+    ss << "                    : [o0] \"r\"(out_ptr0), [o1] \"r\"(out_ptr1)\n";
+    ss << "                    : \"z4\", \"w12\", \"memory\");\n";
+    ss << "            }\n";
+    ss << "        }\n";
+    ss << "    }\n\n";
+
+    ss << "    asm volatile(\"smstop\");\n";
+    ss << "}\n}\n";
+    return ss.str();
+}
+
 std::string generateSourceCode(const TEIR& ir) {
     if (!ir.einsum.empty()) {
+        EinsumSpec spec = parseEinsum(ir.einsum);
+        if (isGEMMForm(spec)) {
+            GEMMMapping gm = extractGEMMMapping(spec);
+            if (ir.backend == Backend::SME) {
+                return generateSMEKernelGEMM(ir, gm);
+            }
+            if (ir.backend == Backend::NEON) {
+                return generateNEONKernelGEMM(ir, gm);
+            }
+        }
         return generateEinsumKernel(ir);
     }
     if (ir.backend == Backend::SME) {

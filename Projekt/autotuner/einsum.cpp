@@ -159,3 +159,25 @@ bool isReduceAxis(const std::string& schedAxis, const EinsumSpec& spec) {
     }
     return false;
 }
+
+bool isGEMMForm(const EinsumSpec& spec) {
+    if (spec.out_axes.size() != 2 || spec.reduce_axes.size() != 1)
+        return false;
+    if (spec.in0_idx.size() != 2 || spec.in1_idx.size() != 2)
+        return false;
+    char out0 = spec.out_axes[0];
+    char out1 = spec.out_axes[1];
+    char red = spec.reduce_axes[0];
+    if (spec.in0_idx[0] == out0 && spec.in0_idx[1] == red &&
+        spec.in1_idx[0] == red && spec.in1_idx[1] == out1)
+        return true;
+    return false;
+}
+
+GEMMMapping extractGEMMMapping(const EinsumSpec& spec) {
+    GEMMMapping m;
+    m.out0_axis = spec.out_axes[0];
+    m.out1_axis = spec.out_axes[1];
+    m.reduce_axis = spec.reduce_axes[0];
+    return m;
+}
