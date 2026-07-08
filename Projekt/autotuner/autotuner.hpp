@@ -53,6 +53,10 @@ struct AutotunerOptions {
     int gaGenerations = 8;           // Anzahl Generationen
     double gaMutationRate = 0.3;     // Wahrscheinlichkeit fuer Mutation eines Gens
     double gaEliteFraction = 0.25;   // Anteil der Elite (unveraendert uebernommen)
+
+    // CostModel-Vorfilter: nur die Top X% der Kandidaten (nach Schaetzung)
+    // werden JIT-kompiliert. 0.0 = deaktiviert, 0.5 = Top 50%, 1.0 = alle.
+    double costModelFilterPct = 0.3;
 };
 
 // Startet den Autotuning-Prozess basierend auf einer Start-IR und liefert die

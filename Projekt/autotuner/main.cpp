@@ -61,6 +61,10 @@ int main()
         {
             opts.timeBudgetMs = std::stod(envBudget);
         }
+        if (const char* envCostFilter = std::getenv("TEIR_COST_FILTER"))
+        {
+            opts.costModelFilterPct = std::stod(envCostFilter);
+        }
         // Backend-Auswahl: scalar (Default), neon oder sme
         if (const char* envBackend = std::getenv("TEIR_BACKEND"))
         {

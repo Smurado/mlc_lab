@@ -10,7 +10,7 @@ DEFINES = -DJIT_CXX=\"$(JIT_CXX)\" -DJIT_FLAGS=\"$(JIT_FLAGS)\" -DJIT_LDFLAGS=\"
 
 TARGET = teir_compiler
 
-SRCS = main.cpp parser.cpp passes.cpp benchmark.cpp autotuner.cpp codegen.cpp einsum.cpp
+SRCS = main.cpp parser.cpp passes.cpp benchmark.cpp autotuner.cpp codegen.cpp einsum.cpp cost_model.cpp
 OBJS = $(SRCS:.cpp=.o)
 
 all: $(TARGET)

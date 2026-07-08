@@ -2,6 +2,7 @@
 #include "passes.hpp"
 #include "benchmark.hpp"
 #include "einsum.hpp"
+#include "cost_model.hpp"
 #include <iostream>
 #include <algorithm>
 #include <cmath>
@@ -567,10 +568,33 @@ TuningConfig runAutotuner(const TEIR& baseIr) {
 }
 
 TuningConfig runAutotuner(const TEIR& baseIr, const AutotunerOptions& opts) {
-    auto searchSpace = generateSearchSpace(baseIr);
+    auto fullSpace = generateSearchSpace(baseIr);
 
-    std::cout << "[AUTOTUNER] Suchraum generiert. " << searchSpace.size()
-              << " valide Kandidaten (nach Pruning).\n";
+    std::vector<TuningConfig> searchSpace;
+
+    if (!baseIr.einsum.empty() && opts.costModelFilterPct > 0.0 && opts.costModelFilterPct < 1.0) {
+        std::vector<std::pair<double, int>> ranked;
+        ranked.reserve(fullSpace.size());
+        for (int i = 0; i < (int)fullSpace.size(); ++i)
+            ranked.push_back({estimateCost(baseIr, fullSpace[i]), i});
+        std::sort(ranked.begin(), ranked.end());
+
+        int keepCount = std::max(1, (int)(fullSpace.size() * opts.costModelFilterPct));
+        searchSpace.reserve(keepCount);
+        for (int i = 0; i < keepCount; ++i)
+            searchSpace.push_back(fullSpace[ranked[i].second]);
+
+        std::cout << "[AUTOTUNER] Suchraum generiert. " << fullSpace.size()
+                  << " valide Kandidaten (nach Pruning).\n";
+        std::cout << "[COSTMODEL] Vorfilter: Top " << (opts.costModelFilterPct * 100.0)
+                  << "% (" << keepCount << " von " << fullSpace.size()
+                  << ") werden JIT-kompiliert.\n";
+    } else {
+        searchSpace = fullSpace;
+        std::cout << "[AUTOTUNER] Suchraum generiert. " << searchSpace.size()
+                  << " valide Kandidaten (nach Pruning).\n";
+    }
+
     std::cout << "[AUTOTUNER] Strategie: " << strategyName(opts.strategy)
               << " | patience=" << opts.patience
               << ", minImprovement=" << (opts.minImprovementRel * 100.0) << "%"
