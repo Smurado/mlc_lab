@@ -1,4 +1,5 @@
 #include "codegen.hpp"
+#include "einsum.hpp"
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -362,7 +363,93 @@ static std::string generateScalarKernel(const TEIR& ir) {
     return ss.str();
 }
 
+// ============================================================================
+// Einsum-Backend: Allgemeiner Tensorkontraktions-Codegen
+// out[out_idx] = sum_{reduce_idx} in0[in0_idx] * in1[in1_idx]
+// Ignoriert Schedule (Schicht 1); Schicht 2 generalisiert den Autotuner.
+// ============================================================================
+
+static std::string generateEinsumKernel(const TEIR& ir) {
+    EinsumSpec spec = parseEinsum(ir.einsum);
+    auto out_strides = computeStrides(spec.out_idx, ir);
+    auto in0_strides = computeStrides(spec.in0_idx, ir);
+    auto in1_strides = computeStrides(spec.in1_idx, ir);
+    int out_size = tensorElements(spec.out_idx, ir);
+
+    std::stringstream ss;
+    ss << "// Auto-generiert vom TEIR-Autotuner (Einsum-Backend)\n";
+    ss << "// " << ir.einsum << "\n";
+    ss << "extern \"C\" {\n";
+    ss << "void teir_" << ir.name
+       << "(const float* __restrict__ in0, const float* __restrict__ in1, float* __restrict__ out) {\n";
+
+    ss << "    for (int i = 0; i < " << out_size << "; ++i) out[i] = 0.0f;\n\n";
+
+    int indent = 4;
+    for (char c : spec.out_axes) {
+        int ext = extentOfChar(ir, c);
+        std::string pad(indent, ' ');
+        ss << pad << "for (int " << c << " = 0; " << c << " < " << ext << "; ++" << c << ") {\n";
+        indent += 4;
+    }
+
+    {
+        std::string pad(indent, ' ');
+        ss << pad << "float acc = 0.0f;\n";
+    }
+
+    for (char c : spec.reduce_axes) {
+        int ext = extentOfChar(ir, c);
+        std::string pad(indent, ' ');
+        ss << pad << "for (int " << c << " = 0; " << c << " < " << ext << "; ++" << c << ") {\n";
+        indent += 4;
+    }
+
+    {
+        std::string pad(indent, ' ');
+        ss << pad << "acc += in0[";
+        for (int i = 0; i < (int)spec.in0_idx.size(); ++i) {
+            if (i > 0) ss << " + ";
+            ss << spec.in0_idx[i] << " * " << in0_strides[i];
+        }
+        ss << "] * in1[";
+        for (int i = 0; i < (int)spec.in1_idx.size(); ++i) {
+            if (i > 0) ss << " + ";
+            ss << spec.in1_idx[i] << " * " << in1_strides[i];
+        }
+        ss << "];\n";
+    }
+
+    for (size_t i = 0; i < spec.reduce_axes.size(); ++i) {
+        indent -= 4;
+        std::string pad(indent, ' ');
+        ss << pad << "}\n";
+    }
+
+    {
+        std::string pad(indent, ' ');
+        ss << pad << "out[";
+        for (int i = 0; i < (int)spec.out_idx.size(); ++i) {
+            if (i > 0) ss << " + ";
+            ss << spec.out_idx[i] << " * " << out_strides[i];
+        }
+        ss << "] = acc;\n";
+    }
+
+    for (size_t i = 0; i < spec.out_axes.size(); ++i) {
+        indent -= 4;
+        std::string pad(indent, ' ');
+        ss << pad << "}\n";
+    }
+
+    ss << "}\n}\n";
+    return ss.str();
+}
+
 std::string generateSourceCode(const TEIR& ir) {
+    if (!ir.einsum.empty()) {
+        return generateEinsumKernel(ir);
+    }
     if (ir.backend == Backend::SME) {
         return generateSMEKernel(ir);
     }
