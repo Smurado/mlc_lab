@@ -1,0 +1,2 @@
+name,tensors,axes,primitives,schedule,invokes
+contraction,"in0:f32;in1:f32;out:f32","p:128;q:96;r:96;s:64;t:32;u:256","zero;gemm","p:parallel;r:parallel;t:sequential","zero;gemm"

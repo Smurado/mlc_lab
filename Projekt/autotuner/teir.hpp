@@ -8,10 +8,13 @@ enum class Policy {
     Parallel
 };
 
-// Codegen-Backend: SCALAR nutzt Autovektorisierung + OpenMP,
-// SME generiert echten ARM SME Outer-Product-GEMM (smstart/fmopa/smstop).
+// Codegen-Backend:
+// - SCALAR nutzt Autovektorisierung + OpenMP,
+// - NEON generiert echten 4x4 ARM NEON Outer-Product-GEMM (vmlaq_n_f32),
+// - SME generiert echten ARM SME Outer-Product-GEMM (smstart/fmopa/smstop).
 enum class Backend {
     Scalar,
+    NEON,
     SME
 };
 
@@ -42,7 +45,8 @@ struct TEIR {
     std::vector<Iteration> schedule;
     std::vector<std::string> invokes;
     int unrollFactor = 1; // Unroll-Faktor fuer die innerste Schleife (Codegen)
-    Backend backend = Backend::Scalar; // Codegen-Backend (Scalar oder SME)
+    Backend backend = Backend::Scalar; // Codegen-Backend (Scalar, NEON oder SME)
+    std::string einsum; // Optionale Einstein-Notation der Kontraktion (z.B. "abc-bda-dc")
 
     // Hilfsfunktion zur Verifizierung: Gibt die geladene IR wieder aus
     void print() const {

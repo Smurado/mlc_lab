@@ -47,8 +47,9 @@ week9/applications/tensorized_net/data/*.bin
 # macOS Debug Symbols
 *.dSYM/
 
-# Data and Models
-*.csv
+# Data and Models (input CSVs werden zum Testen benoetigt -> nur Runtime-Artifakte ignorieren)
+Projekt/autotuner/autotuner_results.csv
+Projekt/autotuner/results.csv
 *.dat
 *.pkl
 *.h5

@@ -39,7 +39,7 @@ struct AutotunerOptions {
     bool shuffle = true;             // Suchraum vor der Iteration mischen
     double timeBudgetMs = 60000.0;   // harte Abbruchgrenze (Sicherheitsnetz)
     SearchStrategy strategy = SearchStrategy::SIMULATED_ANNEALING;
-    Backend backend = Backend::Scalar; // Codegen-Backend (Scalar oder SME)
+    Backend backend = Backend::Scalar; // Codegen-Backend (Scalar, NEON oder SME)
 
     // Simulated-Annealing-Parameter
     double saInitialTemp = 1.0;      // initiale Temperatur (relativ zur ersten Zeit)

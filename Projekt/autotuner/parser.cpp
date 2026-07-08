@@ -85,8 +85,8 @@ TEIR parseCSV(const std::string& filename)
 
     auto cols = parseCSVLine(line);
 
-    if (cols.size() != 6)
-        throw std::runtime_error("Expected exactly 6 CSV columns.");
+    if (cols.size() != 6 && cols.size() != 7)
+        throw std::runtime_error("Expected 6 or 7 CSV columns (einsum is optional).");
 
     TEIR ir;
 
@@ -160,6 +160,13 @@ TEIR parseCSV(const std::string& filename)
     {
         ir.invokes.push_back(inv);
     }
+
+    //--------------------------------------------------
+    // Einsum (optional, 7. Spalte)
+    //--------------------------------------------------
+
+    if (cols.size() >= 7)
+        ir.einsum = cols[6];
 
     return ir;
 }

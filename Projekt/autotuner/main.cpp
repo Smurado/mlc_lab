@@ -59,13 +59,15 @@ int main()
         {
             opts.timeBudgetMs = std::stod(envBudget);
         }
-
+        // Backend-Auswahl: scalar (Default), neon oder sme
         if (const char* envBackend = std::getenv("TEIR_BACKEND"))
         {
             std::string b(envBackend);
 
             if (b == "sme" || b == "SME")
                 opts.backend = Backend::SME;
+            else if (b == "neon" || b == "NEON")
+                opts.backend = Backend::NEON;
         }
 
         //------------------------------------------------------

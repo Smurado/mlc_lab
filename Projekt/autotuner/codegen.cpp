@@ -145,6 +145,150 @@ static std::string generateSMEKernel(const TEIR& ir) {
 }
 
 // ============================================================================
+// NEON-Backend: 4x4 Outer-Product GEMM mit skalarem A-Broadcast
+// out[R,T] += in0[R,P] * in1[P,T]
+//
+// Schedule-aware: nutzt die Autotuner-Transformtionen wie folgt:
+//   - split_factor = p1-Extent = K-Tile-Groesse (Cache-Blocking der Reduktion)
+//   - loop_order: relative Reihenfolge von r/t wird als Block-Schleifen-
+//                 reihenfolge uebernommen (p0/p1 liegen innen, da die 4x4-
+//                 Akkumulatoren pro (m,n)-Block den gesamten K-Bereich spannen)
+//   - parallel_axis: OpenMP auf die r- oder t-Block-Schleife
+//   - unroll_factor: Pragma auf die innere p1- (bzw. p-) Schleife
+//
+// A liegt row-major vor; fester m + variierendes p ist nicht contiguous.
+// Daher 4 skalare Lasten + Broadcast via vmlaq_n_f32 (keine Transposition).
+// B liegt row-major vor; festes p + variierendes t ist contiguous -> vld1q.
+// ============================================================================
+static std::string generateNEONKernel(const TEIR& ir) {
+    std::stringstream ss;
+
+    const int R = extentOf(ir, "r");
+    const int T = extentOf(ir, "t");
+
+    bool split = false;
+    int F = 1;   // K-Tile-Groesse = p1-Extent
+    int P;       // Volles Reduktions-Extent
+    int P0 = 0;  // Aeussere K-Schleifen-Extent
+    if (extentOf(ir, "p", -1) != -1) {
+        P = extentOf(ir, "p");
+        P0 = P;
+    } else {
+        F = extentOf(ir, "p1");
+        P0 = extentOf(ir, "p0");
+        P = P0 * F;
+        split = true;
+    }
+
+    const int mBlocks = R / 4;
+    const int nBlocks = T / 4;
+
+    // Schedule analysieren: relative Reihenfolge von r und t + Parallel-Achsen.
+    // NEON-Constraint: r,t (M/N-Bloecke) muessen ausserhalb von p0,p1 (K) liegen,
+    // da die 4x4-Akkumulatoren pro (m,n)-Block den gesamten K-Bereich spannen.
+    bool tBeforeR = false;
+    bool parallelR = false, parallelT = false;
+    int rPos = -1, tPos = -1;
+    for (int i = 0; i < (int)ir.schedule.size(); ++i) {
+        const auto& it = ir.schedule[i];
+        if (it.axis == "r") { rPos = i; if (it.policy == Policy::Parallel) parallelR = true; }
+        if (it.axis == "t") { tPos = i; if (it.policy == Policy::Parallel) parallelT = true; }
+    }
+    if (rPos >= 0 && tPos >= 0 && tPos < rPos) tBeforeR = true;
+
+    const int unroll = ir.unrollFactor;
+
+    ss << "// Auto-generiert vom TEIR-Autotuner (NEON-Backend, 4x4 Outer-Product)\n";
+    ss << "// GEMM: out[" << R << "," << T << "] += in0[" << R << "," << P
+       << "] * in1[" << P << "," << T << "]\n";
+    ss << "// K-Tile (split p1): " << F << " | Unroll: " << unroll
+       << " | Loop: " << (tBeforeR ? "t,r" : "r,t") << "\n";
+    ss << "#include <arm_neon.h>\n";
+    ss << "#include <omp.h>\n\n";
+    ss << "extern \"C\" {\n";
+    ss << "void teir_" << ir.name
+       << "(const float* __restrict__ in0, const float* __restrict__ in1, float* __restrict__ out) {\n";
+
+    // Tail-Elemente (R%4 bzw. T%4) brauchen null-initialisiertes out fuer die
+    // skalare Rest-Akkumulation. Die 4x4-Bloecke ueberschreiben ihren Bereich
+    // anschliessend mit dem vollen Akku-Ergebnis (out = acc, nicht out += acc).
+    ss << "    for (int i = 0; i < " << (R * T) << "; ++i) out[i] = 0.0f;\n\n";
+
+    // --- Aeussere Block-Schleifen (r/t in Schedule-Reihenfolge) ---
+    if (tBeforeR) {
+        if (parallelT) ss << "    #pragma omp parallel for\n";
+        ss << "    for (int nb = 0; nb < " << nBlocks << "; ++nb) {\n";
+        ss << "        const int n = nb * 4;\n";
+        if (parallelR) ss << "        #pragma omp parallel for\n";
+        ss << "        for (int mb = 0; mb < " << mBlocks << "; ++mb) {\n";
+        ss << "            const int m = mb * 4;\n";
+    } else {
+        if (parallelR) ss << "    #pragma omp parallel for\n";
+        ss << "    for (int mb = 0; mb < " << mBlocks << "; ++mb) {\n";
+        ss << "        const int m = mb * 4;\n";
+        if (parallelT) ss << "        #pragma omp parallel for\n";
+        ss << "        for (int nb = 0; nb < " << nBlocks << "; ++nb) {\n";
+        ss << "            const int n = nb * 4;\n";
+    }
+
+    // --- 4x4 Akkumulatoren nullen (eine float32x4_t pro Ausgabezeile) ---
+    ss << "            float32x4_t acc0 = vdupq_n_f32(0.0f);\n";
+    ss << "            float32x4_t acc1 = vdupq_n_f32(0.0f);\n";
+    ss << "            float32x4_t acc2 = vdupq_n_f32(0.0f);\n";
+    ss << "            float32x4_t acc3 = vdupq_n_f32(0.0f);\n\n";
+
+    // --- K-Schleifen: p0 aussen, p1 innen (fmla). Ohne Split: einzelne p-Schleife ---
+    if (split) {
+        ss << "            for (int p0 = 0; p0 < " << P0 << "; ++p0) {\n";
+        if (unroll > 1) ss << "                #pragma GCC unroll(" << unroll << ")\n";
+        ss << "                for (int p1 = 0; p1 < " << F << "; ++p1) {\n";
+        ss << "                    const int p = p0 * " << F << " + p1;\n";
+    } else {
+        ss << "            for (int p = 0; p < " << P << "; ++p) {\n";
+    }
+
+    // --- 4x4 Microkernel: 1 B-Vektor-Load + 4 skalare A-Loads + 4 fmla ---
+    ss << "                    const float* b_ptr = in1 + p * " << T << " + n;\n";
+    ss << "                    float32x4_t b_vec = vld1q_f32(b_ptr);\n";
+    ss << "                    acc0 = vmlaq_n_f32(acc0, b_vec, in0[(m + 0) * " << P << " + p]);\n";
+    ss << "                    acc1 = vmlaq_n_f32(acc1, b_vec, in0[(m + 1) * " << P << " + p]);\n";
+    ss << "                    acc2 = vmlaq_n_f32(acc2, b_vec, in0[(m + 2) * " << P << " + p]);\n";
+    ss << "                    acc3 = vmlaq_n_f32(acc3, b_vec, in0[(m + 3) * " << P << " + p]);\n";
+
+    // --- K-Schleifen schliessen ---
+    if (split) {
+        ss << "                }\n";
+        ss << "            }\n\n";
+    } else {
+        ss << "            }\n\n";
+    }
+
+    // --- Store: 4 Akku-Vektoren in out (out = acc, kein Read-Modify-Write) ---
+    ss << "            vst1q_f32(out + (m + 0) * " << T << " + n, acc0);\n";
+    ss << "            vst1q_f32(out + (m + 1) * " << T << " + n, acc1);\n";
+    ss << "            vst1q_f32(out + (m + 2) * " << T << " + n, acc2);\n";
+    ss << "            vst1q_f32(out + (m + 3) * " << T << " + n, acc3);\n";
+
+    // --- Block-Schleifen schliessen ---
+    ss << "        }\n";
+    ss << "    }\n\n";
+
+    // --- Skalarer Tail fuer R%4 bzw. T%4 (Reste; i.d.R. 0 Iterationen) ---
+    ss << "    // Tail: Rest-Zeilen/Spalten bei R%4!=0 oder T%4!=0\n";
+    ss << "    for (int m = " << (mBlocks * 4) << "; m < " << R << "; ++m)\n";
+    ss << "        for (int p = 0; p < " << P << "; ++p)\n";
+    ss << "            for (int t = 0; t < " << T << "; ++t)\n";
+    ss << "                out[m * " << T << " + t] += in0[m * " << P << " + p] * in1[p * " << T << " + t];\n";
+    ss << "    for (int m = 0; m < " << (mBlocks * 4) << "; ++m)\n";
+    ss << "        for (int p = 0; p < " << P << "; ++p)\n";
+    ss << "            for (int t = " << (nBlocks * 4) << "; t < " << T << "; ++t)\n";
+    ss << "                out[m * " << T << " + t] += in0[m * " << P << " + p] * in1[p * " << T << " + t];\n";
+
+    ss << "}\n}\n";
+    return ss.str();
+}
+
+// ============================================================================
 // Scalar-Backend: parametrisches Schleifennest mit OpenMP + Unroll
 // ============================================================================
 
@@ -221,6 +365,9 @@ static std::string generateScalarKernel(const TEIR& ir) {
 std::string generateSourceCode(const TEIR& ir) {
     if (ir.backend == Backend::SME) {
         return generateSMEKernel(ir);
+    }
+    if (ir.backend == Backend::NEON) {
+        return generateNEONKernel(ir);
     }
     return generateScalarKernel(ir);
 }
