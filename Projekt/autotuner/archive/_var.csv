@@ -1,0 +1,2 @@
+name,tensors,axes,primitives,schedule,invokes,einsum
+contraction_v,"in0:f32;in1:f32;out:f32","a:32;b:32;c:32;d:32","zero;gemm","a:sequential;b:sequential;c:sequential;d:sequential","zero;gemm","abc-bda-dc"

@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""Baut hero_comparison.ipynb — den 4-Wege-Technologie-Vergleich (naiv/TEIR/TVM/PyTorch)
+auf dem GEMM-Fall ab-ac-cb @512. Alle Zahlen real gemessen auf Apple M4 Max."""
+import nbformat as nbf
+
+nb = nbf.v4.new_notebook()
+c = []
+
+c.append(nbf.v4.new_markdown_cell(
+    "# Technologie-Vergleich: Naiv vs. TEIR vs. TVM vs. PyTorch\n"
+    "\n"
+    "**Hero-Fall:** die reine Matrix-Multiplikation `ab-ac-cb` — "
+    "$C[a,b] = \\sum_c A[a,c]\\cdot B[c,b]$ — bei **512×512×512**.\n"
+    "\n"
+    "Warum dieser Fall? Er ist *GEMM-form*, also läuft **TEIR mit seinem NEON-Kernel** "
+    "(seine beste Seite), und **alle vier Technologien beherrschen ihn sauber** "
+    "(kein Timeout/Fallback) → ein fairer, direkt vergleichbarer Durchlauf.\n"
+    "\n"
+    "**Hardware:** Apple M4 Max (16 Kerne, ARM NEON + AMX-Matrix-Coprozessor). "
+    "Alle Werte real gemessen (TVM: MetaSchedule, 512 Trials; TEIR: SA, 30 Trials).\n"
+))
+
+c.append(nbf.v4.new_code_cell(
+    "import os, subprocess, time\n"
+    "\n"
+    "CASE = 'ab-ac-cb'\n"
+    "N = 512\n"
+    "FLOPS = 2 * N**3\n"
+    "\n"
+    "# --- Real gemessen (Apple M4 Max, ab-ac-cb @512^3) ---\n"
+    "CACHED = {\n"
+    "    'Naiv\\n(ungetunt, scalar)':            2.50,\n"
+    "    'TEIR\\n(getunt, NEON)':               30.66,\n"
+    "    'TVM\\n(getunt, MetaSchedule)':       573.60,\n"
+    "    'PyTorch\\n(torch.matmul, BLAS/AMX)': 2501.20,\n"
+    "}\n"
+    "# Bonus-Datenpunkt: torch.einsum(2D) statt matmul -> nur ~427 GFLOPS (API-Pfad zählt!)\n"
+    "TORCH_EINSUM = 426.99\n"
+    "\n"
+    "# REMEASURE=True misst alles FRISCH auf DIESER Maschine (Standard, damit du es\n"
+    "# selbst nachvollziehst). TVM dauert je nach TVM_TRIALS ~2-10 min. Auf gecachte\n"
+    "# Referenzwerte (CACHED) umschalten: REMEASURE = False.\n"
+    "REMEASURE = True\n"
+    "\n"
+    "DIR = os.getcwd()\n"
+    "AUTO = os.path.dirname(os.path.dirname(DIR))  # notebooks/ -> eval/ -> autotuner/\n"
+    "COMPILER = os.path.join(AUTO, 'src', 'teir_compiler')\n"
+    "WORKER = os.path.join(AUTO, 'eval', 'gett_bench.py')\n"
+    "TVM_PY = os.environ.get('GETT_TVM_PY',\n"
+    "    '/opt/homebrew/Caskroom/miniconda/base/envs/tvm-bench/bin/python')\n"
+    "ROW = f'hero,x,a:{N};b:{N};c:{N},x,x,x,{CASE}'\n"
+    "\n"
+    "def _teir(no_autotune, backend):\n"
+    "    csv = os.path.join(DIR, '_hero_one.csv')\n"
+    "    with open(csv, 'w') as f:\n"
+    "        f.write('name,tensors,axes,primitives,schedule,invokes,einsum\\n')\n"
+    "        f.write(f'hero,in0:f32;in1:f32;out:f32,a:{N};b:{N};c:{N},zero;gemm,'\n"
+    "                f'a:sequential;b:sequential;c:sequential,zero;gemm,{CASE}\\n')\n"
+    "    env = {**os.environ, 'TEIR_INPUT': csv, 'TEIR_BACKEND': backend}\n"
+    "    if no_autotune:\n"
+    "        env['TEIR_NO_AUTOTUNE'] = '1'\n"
+    "    else:\n"
+    "        env.update({'TEIR_STRATEGY':'sa','TEIR_MAX_TRIALS':'30',\n"
+    "                    'TEIR_TIME_BUDGET_MS':'600000','TEIR_SEARCH_OPT':'-O2'})\n"
+    "    out = subprocess.run([COMPILER], capture_output=True,\n"
+    "                         text=True, env=env, timeout=None).stdout  # keine Zeitgrenze\n"
+    "    import re; m = re.search(r'\\[PERFORMANCE\\]\\s+[\\d.eE+-]+\\s+ms\\s+\\(([\\d.eE+-]+)', out)\n"
+    "    return float(m.group(1)) if m else None\n"
+    "\n"
+    "def _worker(py, engine):\n"
+    "    out = subprocess.run([py, WORKER,'--engine',engine,\n"
+    "                          '--row',ROW], capture_output=True, text=True, timeout=None).stdout\n"
+    "    import re; m = re.search(r'RESULT\\s+([\\d.eE+-]+)', out)\n"
+    "    return float(m.group(1)) if m else None\n"
+    "\n"
+    "ORDER = ['Naiv\\n(ungetunt, scalar)', 'TEIR\\n(getunt, NEON)',\n"
+    "         'TVM\\n(getunt, MetaSchedule)', 'PyTorch\\n(torch.matmul, BLAS/AMX)']\n"
+    "\n"
+    "def measure_all():\n"
+    "    # schnelle zuerst (naiv/TEIR/torch in Sekunden), TVM zuletzt (Minuten).\n"
+    "    steps = [('Naiv\\n(ungetunt, scalar)',           lambda: _teir(True,  'scalar')),\n"
+    "             ('TEIR\\n(getunt, NEON)',               lambda: _teir(False, 'neon')),\n"
+    "             ('PyTorch\\n(torch.matmul, BLAS/AMX)',  lambda: _worker(os.sys.executable, 'torch')),\n"
+    "             ('TVM\\n(getunt, MetaSchedule)',        lambda: _worker(TVM_PY, 'tvm'))]\n"
+    "    r = {}\n"
+    "    for name, fn in steps:\n"
+    "        print(f'... messe {name.replace(chr(10), \" \")} ', end='', flush=True)\n"
+    "        t0 = time.time(); r[name] = fn()\n"
+    "        print(f'-> {r[name]:.1f} GFLOPS  ({time.time()-t0:.0f}s)', flush=True)\n"
+    "    return {k: r[k] for k in ORDER}  # kanonische Reihenfolge fuers Diagramm\n"
+    "\n"
+    "results = measure_all() if REMEASURE else dict(CACHED)\n"
+    "results\n"
+))
+
+c.append(nbf.v4.new_markdown_cell("## Ergebnis-Tabelle"))
+
+c.append(nbf.v4.new_code_cell(
+    "import pandas as pd\n"
+    "names = [k.replace('\\n', ' ') for k in results]\n"
+    "vals = list(results.values())\n"
+    "base = min(vals); top = max(vals)\n"
+    "df = pd.DataFrame({'Technologie': names, 'GFLOPS': vals})\n"
+    "df['Speedup vs. Naiv'] = (df['GFLOPS'] / base).round(1)\n"
+    "df['% von PyTorch']   = (df['GFLOPS'] / top * 100).round(2)\n"
+    "df\n"
+))
+
+c.append(nbf.v4.new_markdown_cell("## Diagramm (log-Skala, weil 3 Größenordnungen)"))
+
+c.append(nbf.v4.new_code_cell(
+    "import matplotlib.pyplot as plt\n"
+    "labels = list(results.keys()); vals = list(results.values())\n"
+    "colors = ['#9e9e9e', '#1f77b4', '#2ca02c', '#d62728']\n"
+    "fig, ax = plt.subplots(figsize=(9, 5.5))\n"
+    "bars = ax.bar(labels, vals, color=colors)\n"
+    "ax.set_yscale('log')\n"
+    "ax.set_ylabel('GFLOPS  (log-Skala)')\n"
+    "ax.set_title(f'Technologie-Vergleich: {CASE} @ {N}\\u00b3  \\u2014  Apple M4 Max')\n"
+    "ax.set_ylim(1, max(vals) * 2.2)\n"
+    "for b, v in zip(bars, vals):\n"
+    "    ax.text(b.get_x() + b.get_width()/2, v * 1.15, f'{v:,.1f}',\n"
+    "            ha='center', va='bottom', fontweight='bold')\n"
+    "ax.grid(axis='y', alpha=0.3, which='both')\n"
+    "# Multiplikatoren zwischen den Balken (dynamisch aus den Messwerten)\n"
+    "for i, j in [(0, 1), (1, 2), (2, 3)]:\n"
+    "    ax.annotate(f'~{vals[j]/vals[i]:.0f}\\u00d7', xy=(j, vals[j]),\n"
+    "                xytext=(i + 0.5, vals[j] * 1.4),\n"
+    "                ha='center', color='#444', fontsize=11, fontweight='bold')\n"
+    "plt.tight_layout()\n"
+    "plt.savefig('hero_comparison.png', dpi=140)\n"
+    "plt.show()\n"
+))
+
+c.append(nbf.v4.new_markdown_cell(
+    "## Was das zeigt (die ehrliche Story)\n"
+    "\n"
+    "- **Naiv → TEIR: ~12×.** Unser Autotuner holt aus dem *gleichen, einfachen* Codegen "
+    "das ~12-fache heraus — er **sucht wirklich** und findet gute Schedules (2,5 → 30,7 GFLOPS).\n"
+    "- **TEIR → TVM: ~19× — auf dem GLEICHEN Hardwarepfad (LLVM/NEON).** TVM nutzt mehrstufiges "
+    "Cache-Tiling, Vektorisierung und Register-Blocking, das unser Codegen gar nicht "
+    "*ausdrücken* kann. Das ist die ehrliche **Codegen-Decke**, kein Suchbudget-Problem.\n"
+    "- **TVM → PyTorch: ~4× — anderer Hardwarepfad.** `torch.matmul` ruft Apples BLAS → "
+    "**AMX-Matrix-Coprozessor** (dediziertes Silizium), nicht die NEON-Vektoreinheiten. "
+    "Kein Codegen-Wettbewerb, sondern spezialisierte Hardware.\n"
+    "- **Bonus:** `torch.einsum` (statt `torch.matmul`) liefert für denselben GEMM nur "
+    "**~427 GFLOPS** — selbst *innerhalb* PyTorch entscheidet der API-Pfad drastisch.\n"
+    "\n"
+    "**Take-away:** TEIR ist als **Suchverfahren** wirksam (~12× über naiv), hat aber eine "
+    "niedrige **Codegen-Decke**. TVM beziffert, was mit besserem Codegen auf *gleicher* "
+    "Hardware drin wäre; PyTorch/BLAS zeigt, was dedizierte Matrix-Hardware leistet. "
+    "Unser Beitrag ist der ehrliche Autotuner + diese saubere Einordnung — nicht, BLAS zu schlagen.\n"
+))
+
+nb['cells'] = c
+with open('hero_comparison.ipynb', 'w') as f:
+    nbf.write(nb, f)
+print('hero_comparison.ipynb geschrieben:', len(c), 'Zellen')

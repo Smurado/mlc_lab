@@ -23,8 +23,13 @@ $(TARGET): $(OBJS)
 	@echo "Compiling $<..."
 	@$(CXX) $(CXXFLAGS) $(DEFINES) -c $< -o $@
 
+# C2: Akzeptanztest fuer die Stichproben-Validierung (Layout-Bug wird gefangen).
+test: einsum.o
+	@$(CXX) $(CXXFLAGS) test_c2_validator.cpp einsum.o -o _test_c2
+	@./_test_c2
+
 clean:
 	@echo "Cleaning up..."
-	@rm -f $(OBJS) $(TARGET) results.csv autotuner_results.csv generated_kernel.cpp generated_kernel.so _trial_*.cpp _trial_*.so
+	@rm -f $(OBJS) $(TARGET) results.csv autotuner_results.csv generated_kernel.cpp generated_kernel.so _trial_*.cpp _trial_*.so _test_c2
 
-.PHONY: all clean
+.PHONY: all clean test

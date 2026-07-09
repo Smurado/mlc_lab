@@ -11,6 +11,7 @@
 #include <chrono>
 #include <numeric>
 #include <unordered_set>
+#include <cstdlib>
 
 // =====================================================================
 // Suchraum-Generierung
@@ -157,10 +158,22 @@ struct SearchContext {
     bool stoppedEarly = false;
     std::string stopReason;
 
+    // B2: GA-Leerlauf-Statistik (nur die GA-Strategie befuellt diese).
+    long gaDuplicateChildren = 0; // Kinder, die schon besucht waren (waeren Leerlaeufe)
+    long gaResolved = 0;          // davon per Remutation zu unbesucht aufgeloest
+    long gaGaveUp = 0;            // davon nach maxTries aufgegeben
+    long gaRemutations = 0;       // gesamte Remutations-Versuche
+    long gaStallBreaks = 0;       // Generationen, die wegen erschoepftem Raum abbrachen
+
+    // D1: optionaler Pfad fuer das Konvergenz-Log (Env TEIR_TRIAL_LOG).
+    std::string trialLogPath;
+
     SearchContext(const TEIR& ir, const AutotunerOptions& o)
         : baseIr(ir), opts(o), rng(o.seed),
           startTime(std::chrono::high_resolution_clock::now()),
-          bestResult{std::numeric_limits<double>::infinity(), 0.0} {}
+          bestResult{std::numeric_limits<double>::infinity(), 0.0} {
+        if (const char* p = std::getenv("TEIR_TRIAL_LOG")) trialLogPath = p;
+    }
 
     double elapsedMs() const {
         const auto now = std::chrono::high_resolution_clock::now();
@@ -220,34 +233,48 @@ struct SearchContext {
         trialCount++;
         visited.insert(hashConfig(config));
 
-        if (!std::isfinite(res.runtime_ms)) {
+        bool isNewBest = false;
+
+        if (std::isfinite(res.runtime_ms)) {
+            validCount++;
+            // C3: CostModel-Schaetzung mitloggen (fuer die Rang-Korrelation
+            // geschaetzt vs. gemessen). Identische Basis wie der Vorfilter.
+            const double costEst = estimateCost(baseIr, config);
+            saveToCSV("autotuner_results.csv", config.toString(), res, strategyName, costEst);
+
+            const bool isInitialBest = !std::isfinite(bestResult.runtime_ms);
+            const double improvementAbs = bestResult.runtime_ms - res.runtime_ms;
+            const double improvementRel =
+                (std::isfinite(bestResult.runtime_ms) && bestResult.runtime_ms > 0.0)
+                    ? improvementAbs / bestResult.runtime_ms
+                    : 1.0;
+
+            if (isInitialBest || improvementRel >= opts.minImprovementRel) {
+                bestResult = res;
+                bestConfig = config;
+                trialsSinceImprovement = 0;
+                isNewBest = true;
+                std::cout << "[NEW BEST] Trial #" << trialCount << " | "
+                          << "SF=" << config.split_factor
+                          << ", Parallel=" << (config.parallel_axis.empty() ? "none" : config.parallel_axis)
+                          << " -> Zeit: " << res.runtime_ms << " ms ("
+                          << res.gflops << " GFLOPS)\n";
+            } else {
+                trialsSinceImprovement++;
+            }
+        } else {
             rejectedCount++;
-            return false;
         }
-        validCount++;
 
-        saveToCSV("autotuner_results.csv", config.toString(), res, strategyName);
-
-        const bool isInitialBest = !std::isfinite(bestResult.runtime_ms);
-        const double improvementAbs = bestResult.runtime_ms - res.runtime_ms;
-        const double improvementRel =
-            (std::isfinite(bestResult.runtime_ms) && bestResult.runtime_ms > 0.0)
-                ? improvementAbs / bestResult.runtime_ms
-                : 1.0;
-
-        if (isInitialBest || improvementRel >= opts.minImprovementRel) {
-            bestResult = res;
-            bestConfig = config;
-            trialsSinceImprovement = 0;
-            std::cout << "[NEW BEST] Trial #" << trialCount << " | "
-                      << "SF=" << config.split_factor
-                      << ", Parallel=" << (config.parallel_axis.empty() ? "none" : config.parallel_axis)
-                      << " -> Zeit: " << res.runtime_ms << " ms ("
-                      << res.gflops << " GFLOPS)\n";
-            return true;
+        // D1: Konvergenz-Log — jeder Trial (valide wie inkorrekt, da beide ins
+        // Budget zaehlen). trial_gflops=0 fuer inkorrekte, best_gflops = bisher Bestes.
+        if (!trialLogPath.empty()) {
+            const double trialG = std::isfinite(res.runtime_ms) ? res.gflops : 0.0;
+            const double bestG = std::isfinite(bestResult.runtime_ms) ? bestResult.gflops : 0.0;
+            appendTrialLog(trialLogPath, strategyName, opts.seed, trialCount, trialG, bestG);
         }
-        trialsSinceImprovement++;
-        return false;
+
+        return isNewBest;
     }
 };
 
@@ -257,6 +284,11 @@ bool checkStop(SearchContext& ctx) {
     if (ctx.budgetExceeded()) {
         ctx.stoppedEarly = true;
         ctx.stopReason = "Zeit-Budget erreicht";
+        return true;
+    }
+    if (ctx.opts.maxTrials > 0 && ctx.trialCount >= ctx.opts.maxTrials) {
+        ctx.stoppedEarly = true;
+        ctx.stopReason = "Trial-Budget erreicht";
         return true;
     }
     if (ctx.patienceExceeded()) {
@@ -277,6 +309,29 @@ void printSummary(const SearchContext& ctx, const std::string& strategyName,
     std::cout << "Getestet: " << ctx.trialCount << "/" << spaceSize
               << " | Valide: " << ctx.validCount
               << " | Verworfen (inkorrekt/Race): " << ctx.rejectedCount << "\n";
+    {
+        const long hits = benchmarkCacheHits();
+        const long misses = benchmarkCacheMisses();
+        const long total = hits + misses;
+        const double hitRate = (total > 0) ? (100.0 * hits / total) : 0.0;
+        std::cout << "Kernel-Cache: " << hits << " Treffer / " << misses
+                  << " JIT-Kompilate (" << hitRate << "% gespart)\n";
+        // A5: persistenter Cross-Run-Cache (nur wenn aktiv/getroffen).
+        const long phits = benchmarkPersistHits();
+        if (phits > 0)
+            std::cout << "Persistenter Cache: " << phits
+                      << " Cross-Run-Treffer (JIT/Bench uebersprungen)\n";
+    }
+    // B2: GA-Leerlauf-Vermeidung (nur relevant, wenn ueberhaupt Duplikate auftraten).
+    if (ctx.gaDuplicateChildren > 0) {
+        std::cout << "GA-Leerlaeufe: " << ctx.gaDuplicateChildren
+                  << " doppelte Kinder -> " << ctx.gaResolved
+                  << " per Remutation ersetzt (" << ctx.gaRemutations << " Versuche), "
+                  << ctx.gaGaveUp << " aufgegeben";
+        if (ctx.gaStallBreaks > 0)
+            std::cout << ", " << ctx.gaStallBreaks << " Generation(en) wegen erschoepftem Raum beendet";
+        std::cout << "\n";
+    }
     if (ctx.stoppedEarly) {
         std::cout << "[EARLY STOP] Abbruch nach " << ctx.trialCount << " Trials: "
                   << ctx.stopReason << "\n";
@@ -321,29 +376,111 @@ TuningConfig runRandomSearch(SearchContext& ctx,
 // Strategie 2: Simulated Annealing
 // =====================================================================
 
-// Erzeugt einen zufaelligen Nachbarn einer Config durch kleine Mutation.
-TuningConfig mutateNeighbor(std::mt19937& rng, const TuningConfig& base,
-                            const std::vector<TuningConfig>& space) {
-    std::vector<const TuningConfig*> candidates;
-    for (const auto& c : space) {
-        if (c.split_axis == base.split_axis ||
-            c.split_factor == base.split_factor ||
-            c.loop_order == base.loop_order) {
-            candidates.push_back(&c);
+// Liefert den Index des EINEN Gens, in dem sich a und b unterscheiden, oder -1
+// falls sie in 0 oder >1 Genen differieren. Gen-Indizes:
+// 0=split_axis, 1=split_factor, 2=loop_order, 3=parallel_axis, 4=unroll_factor.
+static int singleGeneDiff(const TuningConfig& a, const TuningConfig& b) {
+    int diffs = 0, which = -1;
+    if (a.split_axis    != b.split_axis)    { ++diffs; which = 0; }
+    if (a.split_factor  != b.split_factor)  { ++diffs; which = 1; }
+    if (a.loop_order    != b.loop_order)    { ++diffs; which = 2; }
+    if (a.parallel_axis != b.parallel_axis) { ++diffs; which = 3; }
+    if (a.unroll_factor != b.unroll_factor) { ++diffs; which = 4; }
+    return (diffs == 1) ? which : -1;
+}
+
+// True, wenn sich zwei Loop-Orders in genau zwei Positionen unterscheiden und
+// diese vertauscht sind (Einzel-Transposition) — die lokalste Permutations-
+// Mutation.
+static bool isSingleSwap(const std::vector<std::string>& a,
+                         const std::vector<std::string>& b) {
+    if (a.size() != b.size()) return false;
+    int p0 = -1, p1 = -1, diffs = 0;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (a[i] != b[i]) {
+            ++diffs;
+            if (p0 < 0) p0 = (int)i; else if (p1 < 0) p1 = (int)i;
         }
     }
-    if (candidates.empty()) return base;
-    std::uniform_int_distribution<int> pick(0, (int)candidates.size() - 1);
-    return *candidates[pick(rng)];
+    if (diffs != 2) return false;
+    return a[p0] == b[p1] && a[p1] == b[p0];
+}
+
+// Erzeugt einen ECHTEN lokalen Nachbarn: die zurueckgegebene Config unterscheidet
+// sich vom Ausgangspunkt in GENAU EINEM Gen und liegt im (gefilterten) Suchraum.
+// Fuer geordnete Gene (Split-Faktor, Unroll) wird der naechstgelegene Wert
+// bevorzugt (kleine Schritte), fuer die Loop-Order eine Einzel-Transposition.
+// (Vorher: OR-Bedingung ueber den ganzen Raum -> globale Spruenge, faktisch
+// Random Search. Das war der Grund, warum SA sich nicht von Random abhob.)
+TuningConfig mutateNeighbor(std::mt19937& rng, const TuningConfig& base,
+                            const std::vector<TuningConfig>& space) {
+    // Ein-Gen-Nachbarn, gruppiert nach Gen-Index.
+    std::vector<const TuningConfig*> byGene[5];
+    for (const auto& c : space) {
+        const int g = singleGeneDiff(base, c);
+        if (g >= 0) byGene[g].push_back(&c);
+    }
+
+    // Gene in zufaelliger Reihenfolge probieren, damit keines bevorzugt wird.
+    int order[5] = {0, 1, 2, 3, 4};
+    std::shuffle(order, order + 5, rng);
+
+    auto absDiff = [](int x, int y) { return x > y ? x - y : y - x; };
+
+    for (int g : order) {
+        auto& cand = byGene[g];
+        if (cand.empty()) continue;
+
+        // Geordnete Gene: naechstgelegenen Wert waehlen (echter kleiner Schritt).
+        if (g == 1 || g == 4) {
+            const int baseVal = (g == 1) ? base.split_factor : base.unroll_factor;
+            int bestDist = std::numeric_limits<int>::max();
+            for (const auto* c : cand) {
+                const int v = (g == 1) ? c->split_factor : c->unroll_factor;
+                bestDist = std::min(bestDist, absDiff(v, baseVal));
+            }
+            std::vector<const TuningConfig*> nearest;
+            for (const auto* c : cand) {
+                const int v = (g == 1) ? c->split_factor : c->unroll_factor;
+                if (absDiff(v, baseVal) == bestDist) nearest.push_back(c);
+            }
+            std::uniform_int_distribution<int> pick(0, (int)nearest.size() - 1);
+            return *nearest[pick(rng)];
+        }
+
+        // Loop-Order: Einzel-Swaps bevorzugen, sonst irgendeine andere Order.
+        if (g == 2) {
+            std::vector<const TuningConfig*> swaps;
+            for (const auto* c : cand)
+                if (isSingleSwap(base.loop_order, c->loop_order)) swaps.push_back(c);
+            const auto& pool = swaps.empty() ? cand : swaps;
+            std::uniform_int_distribution<int> pick(0, (int)pool.size() - 1);
+            return *pool[pick(rng)];
+        }
+
+        // Kategorische Gene (split_axis, parallel_axis): gleichverteilt.
+        std::uniform_int_distribution<int> pick(0, (int)cand.size() - 1);
+        return *cand[pick(rng)];
+    }
+
+    // Kein Ein-Gen-Nachbar im gefilterten Raum -> keine Bewegung.
+    return base;
 }
 
 TuningConfig runSimulatedAnnealing(SearchContext& ctx,
                                    const std::vector<TuningConfig>& space) {
     const std::string name = strategyName(SearchStrategy::SIMULATED_ANNEALING);
 
-    // Start: zufaellige initiale Config
-    std::uniform_int_distribution<int> pickSpace(0, (int)space.size() - 1);
-    TuningConfig current = space[pickSpace(ctx.rng)];
+    // Start: B3-Warmstart am Cost-Model-Optimum (space[0], da der Suchraum
+    // kostensortiert ist), sonst zufaellig. Lokales Bergsteigen von einem guten
+    // Startpunkt schlaegt breites Random-Sampling; von einem schlechten nicht.
+    TuningConfig current;
+    if (ctx.opts.warmStart && !space.empty()) {
+        current = space[0];
+    } else {
+        std::uniform_int_distribution<int> pickSpace(0, (int)space.size() - 1);
+        current = space[pickSpace(ctx.rng)];
+    }
     BenchmarkResult currentRes = ctx.evaluateTrial(current);
     ctx.absorbTrial(current, currentRes, name);
 
@@ -456,6 +593,26 @@ TuningConfig repair(std::mt19937& rng, TuningConfig c,
     return c;
 }
 
+// B2: Ersetzt ein bereits besuchtes Kind durch eine noch NICHT besuchte, strukturell
+// valide Config, indem es wiederholt mutiert + repariert. Liefert true (und veraendert
+// `child` in-place), sobald ein unbesuchtes gefunden wird; false nach maxAttempts
+// (Suchraum praktisch erschoepft). Ohne diesen Ersatz wuerde die GA-while-Schleife
+// bei konvergierter Population/kleinem Raum Crossover ohne Fortschritt wiederholen,
+// bis das Zeit-Budget greift — reine Leerlaeufe. `remutations` zaehlt die Versuche.
+static bool ensureUnvisited(std::mt19937& rng, TuningConfig& child,
+                            const std::vector<TuningConfig>& space,
+                            const SearchContext& ctx, int maxAttempts,
+                            long& remutations) {
+    int attempt = 0;
+    while (ctx.alreadyVisited(child) && attempt < maxAttempts) {
+        mutate(rng, child, space);
+        child = repair(rng, child, space, ctx);
+        ++remutations;
+        ++attempt;
+    }
+    return !ctx.alreadyVisited(child);
+}
+
 TuningConfig runGeneticAlgorithm(SearchContext& ctx,
                                  const std::vector<TuningConfig>& space) {
     const std::string name = strategyName(SearchStrategy::GENETIC);
@@ -469,6 +626,14 @@ TuningConfig runGeneticAlgorithm(SearchContext& ctx,
         std::shuffle(indices.begin(), indices.end(), ctx.rng);
         for (int i = 0; i < popSize; ++i) {
             population[i].config = space[indices[i]];
+        }
+        // B3: Warmstart — das obere Drittel der Startpopulation mit den besten
+        // Cost-Model-Kandidaten impfen (space ist kostensortiert). Der Rest bleibt
+        // zufaellig, um Diversitaet fuer Crossover zu erhalten.
+        if (ctx.opts.warmStart) {
+            const int seeded = std::max(1, popSize / 3);
+            for (int i = 0; i < seeded && i < popSize && i < (int)space.size(); ++i)
+                population[i].config = space[i];
         }
     }
 
@@ -500,8 +665,16 @@ TuningConfig runGeneticAlgorithm(SearchContext& ctx,
 
         // Nachkommen via Tournament-Selektion + Crossover + Mutation
         std::uniform_int_distribution<int> pickPop(0, (int)population.size() - 1);
+        // B2: Abbruch-Zaehler gegen Endlosschleife. Wenn ueber viele Iterationen in
+        // Folge KEIN neues Individuum entsteht (Suchraum erschoepft), ist die
+        // Population nicht fuellbar -> Generation vorzeitig beenden statt bis zum
+        // Zeit-Budget leerzulaufen.
+        int stall = 0;
+        const int STALL_LIMIT = std::max(8, popSize);
         while ((int)nextGen.size() < popSize) {
             if (checkStop(ctx)) break;
+
+            const size_t before = nextGen.size();
 
             // Tournament (Größe 2): bessere von zwei zufälligen Eltern
             const Individual& parentA = [&]() -> const Individual& {
@@ -525,18 +698,37 @@ TuningConfig runGeneticAlgorithm(SearchContext& ctx,
 
             for (const TuningConfig& childCfg : {c1, c2}) {
                 if ((int)nextGen.size() >= popSize) break;
-                if (ctx.alreadyVisited(childCfg)) {
-                    // Schon evaluiert: aus Population holen oder überspringen.
-                    // Wir nehmen einfach die Config direkt als evaluiert an,
-                    // wenn sie schon im Best ist, sonst neu bewerten.
-                    continue;
+
+                TuningConfig cfg = childCfg;
+                if (ctx.alreadyVisited(cfg)) {
+                    ctx.gaDuplicateChildren++;
+                    // B2: statt Leerlauf gezielt zu einem unbesuchten Kind remutieren.
+                    // gaRemutateTries=0 stellt das alte Ueberspringen wieder her (Ablation).
+                    const bool ok = ctx.opts.gaRemutateTries > 0 &&
+                                    ensureUnvisited(ctx.rng, cfg, space, ctx,
+                                                    ctx.opts.gaRemutateTries, ctx.gaRemutations);
+                    if (!ok) {
+                        ctx.gaGaveUp++;
+                        continue; // Suchraum erschoepft -> Stall-Zaehler greift unten
+                    }
+                    ctx.gaResolved++;
                 }
+
                 Individual child;
-                child.config = childCfg;
-                child.fitness = ctx.evaluateTrial(childCfg);
+                child.config = cfg;
+                child.fitness = ctx.evaluateTrial(cfg);
                 child.evaluated = true;
                 ctx.absorbTrial(child.config, child.fitness, name);
                 nextGen.push_back(child);
+            }
+
+            if (nextGen.size() == before) {
+                if (++stall >= STALL_LIMIT) {
+                    ctx.gaStallBreaks++;
+                    break; // Population nicht fuellbar (Raum erschoepft)
+                }
+            } else {
+                stall = 0;
             }
         }
 
@@ -571,7 +763,6 @@ TuningConfig runAutotuner(const TEIR& baseIr, const AutotunerOptions& opts) {
     auto fullSpace = generateSearchSpace(baseIr);
 
     std::vector<TuningConfig> searchSpace;
-
     if (!baseIr.einsum.empty() && opts.costModelFilterPct > 0.0 && opts.costModelFilterPct < 1.0) {
         std::vector<std::pair<double, int>> ranked;
         ranked.reserve(fullSpace.size());
@@ -579,16 +770,37 @@ TuningConfig runAutotuner(const TEIR& baseIr, const AutotunerOptions& opts) {
             ranked.push_back({estimateCost(baseIr, fullSpace[i]), i});
         std::sort(ranked.begin(), ranked.end());
 
-        int keepCount = std::max(1, (int)(fullSpace.size() * opts.costModelFilterPct));
+        // Strukturell absurde Kandidaten (Cost == 1e18, z.B. Parallelisierung
+        // eines winzigen Workloads) werden KOMPLETT verworfen — nicht nur nach
+        // hinten sortiert. Sonst leaken sie in die Top X%, wenn es zu wenige
+        // gute Configs gibt (bei 6out: nur 3600 sequenzielle von 28800), und der
+        // Random-Start landet auf einer katastrophalen parallelen Config.
+        constexpr double ABSURD_COST = 1e17;
+        std::vector<int> viable;
+        viable.reserve(ranked.size());
+        for (const auto& [cost, idx] : ranked) {
+            if (cost >= ABSURD_COST) break; // ranked ist sortiert -> ab hier nur noch absurd
+            viable.push_back(idx);
+        }
+        if (viable.empty()) { // Fallback: nichts als viabel eingestuft
+            for (const auto& [cost, idx] : ranked) viable.push_back(idx);
+        }
+        const int absurdCount = (int)fullSpace.size() - (int)viable.size();
+
+        int keepCount = std::max(1, (int)(viable.size() * opts.costModelFilterPct));
         searchSpace.reserve(keepCount);
         for (int i = 0; i < keepCount; ++i)
-            searchSpace.push_back(fullSpace[ranked[i].second]);
+            searchSpace.push_back(fullSpace[viable[i]]);
 
         std::cout << "[AUTOTUNER] Suchraum generiert. " << fullSpace.size()
                   << " valide Kandidaten (nach Pruning).\n";
+        if (absurdCount > 0)
+            std::cout << "[COSTMODEL] " << absurdCount
+                      << " strukturell absurde Configs verworfen "
+                      << "(z.B. Parallelisierung winziger Workloads).\n";
         std::cout << "[COSTMODEL] Vorfilter: Top " << (opts.costModelFilterPct * 100.0)
-                  << "% (" << keepCount << " von " << fullSpace.size()
-                  << ") werden JIT-kompiliert.\n";
+                  << "% (" << keepCount << " von " << viable.size()
+                  << " viablen) werden JIT-kompiliert.\n";
     } else {
         searchSpace = fullSpace;
         std::cout << "[AUTOTUNER] Suchraum generiert. " << searchSpace.size()
@@ -598,9 +810,12 @@ TuningConfig runAutotuner(const TEIR& baseIr, const AutotunerOptions& opts) {
     std::cout << "[AUTOTUNER] Strategie: " << strategyName(opts.strategy)
               << " | patience=" << opts.patience
               << ", minImprovement=" << (opts.minImprovementRel * 100.0) << "%"
-              << ", timeBudget=" << (opts.timeBudgetMs / 1000.0) << "s\n";
+              << ", timeBudget=" << (opts.timeBudgetMs / 1000.0) << "s";
+    if (opts.maxTrials > 0) std::cout << ", maxTrials=" << opts.maxTrials;
+    std::cout << "\n";
     std::cout << "[AUTOTUNER] Jeder Trial wird JIT-kompiliert, auf Korrektheit geprueft und real gebenchmarkt...\n\n";
 
+    resetBenchmarkCacheStats();
     SearchContext ctx(baseIr, opts);
     TuningConfig best;
 

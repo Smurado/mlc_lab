@@ -33,12 +33,14 @@ test_run
 test_run_debug
 *test_run*
 
-# Autotuner JIT/build artifacts
-Projekt/autotuner/teir_compiler
-Projekt/autotuner/generated_kernel.cpp
-Projekt/autotuner/generated_kernel.so
-Projekt/autotuner/_trial_*.cpp
-Projekt/autotuner/_trial_*.so
+# Autotuner JIT/build artifacts (Scratch landet in src/ bzw. eval/)
+Projekt/autotuner/src/teir_compiler
+Projekt/autotuner/src/*.o
+Projekt/autotuner/src/_test_c2
+Projekt/autotuner/**/generated_kernel.*
+Projekt/autotuner/**/_trial_*.cpp
+Projekt/autotuner/**/_trial_*.so
+Projekt/autotuner/**/.teir_cache/
 
 # Week9 supplement binary data (available via cloud link in week9/README.md)
 week9/applications/tensor_ring/data/*.bin
@@ -47,10 +49,23 @@ week9/applications/tensorized_net/data/*.bin
 # macOS Debug Symbols
 *.dSYM/
 
-# Data and Models (input CSVs werden zum Testen benoetigt -> nur Runtime-Artifakte ignorieren)
-Projekt/autotuner/autotuner_results.csv
-Projekt/autotuner/results.csv
+# Data and Models
 *.dat
 *.pkl
 *.h5
 *.model
+
+# Autotuner Runtime-Scratch (die Testergebnisse in results/ bleiben ERHALTEN!)
+Projekt/autotuner/src/autotuner_results.csv
+Projekt/autotuner/eval/autotuner_results.csv
+Projekt/autotuner/results/gett_results/_worker.out
+Projekt/autotuner/results/gett_results/_current.txt
+Projekt/autotuner/eval/_gett_matrix_one.csv
+Projekt/autotuner/eval/_gett_one.csv
+Projekt/autotuner/eval/_retest_*.csv
+Projekt/autotuner/eval/_d3_input.csv
+Projekt/autotuner/eval/_c3_corr_input.csv
+Projekt/autotuner/eval/notebooks/_hero_one.csv
+Projekt/autotuner/eval/notebooks/_ovh_one.csv
+Projekt/autotuner/eval/notebooks/_tt_one.csv
+Projekt/autotuner/eval/notebooks/autotuner_results.csv

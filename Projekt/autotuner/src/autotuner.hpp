@@ -40,6 +40,9 @@ struct AutotunerOptions {
     unsigned seed = 42;              // Seed fuer reproduzierbare Zufallszahl
     bool shuffle = true;             // Suchraum vor der Iteration mischen
     double timeBudgetMs = 60000.0;   // harte Abbruchgrenze (Sicherheitsnetz)
+    int maxTrials = 0;               // max. Anzahl JIT-Trials (0 = deaktiviert).
+                                     // Fuer FAIRE Strategie-Vergleiche: gleiche
+                                     // Trial-Zahl statt gleicher Wanduhrzeit.
     SearchStrategy strategy = SearchStrategy::SIMULATED_ANNEALING;
     Backend backend = Backend::Scalar; // Codegen-Backend (Scalar, NEON oder SME)
 
@@ -53,10 +56,19 @@ struct AutotunerOptions {
     int gaGenerations = 8;           // Anzahl Generationen
     double gaMutationRate = 0.3;     // Wahrscheinlichkeit fuer Mutation eines Gens
     double gaEliteFraction = 0.25;   // Anteil der Elite (unveraendert uebernommen)
+    // B2: max. Remutationen, um ein bereits besuchtes Kind durch ein unbesuchtes
+    // zu ersetzen (statt es ersatzlos zu ueberspringen -> Leerlauf). 0 = altes
+    // Verhalten (ueberspringen), fuer die Ablation.
+    int gaRemutateTries = 25;
 
     // CostModel-Vorfilter: nur die Top X% der Kandidaten (nach Schaetzung)
     // werden JIT-kompiliert. 0.0 = deaktiviert, 0.5 = Top 50%, 1.0 = alle.
     double costModelFilterPct = 0.3;
+
+    // B3: SA/GA starten am Cost-Model-Optimum (bestplatzierte gefilterte Config)
+    // statt an einer zufaelligen. Lokales Suchen zahlt sich erst mit gutem Start
+    // aus. Random Search bleibt bewusst uninformiert (faire Baseline).
+    bool warmStart = true;
 };
 
 // Startet den Autotuning-Prozess basierend auf einer Start-IR und liefert die

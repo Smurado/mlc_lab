@@ -1,0 +1,9 @@
+strategy,seed,trial,gflops,best_gflops
+SimulatedAnnealing,1,1,38.3852,38.3852
+SimulatedAnnealing,1,2,0,38.3852
+SimulatedAnnealing,1,3,36.1335,38.3852
+SimulatedAnnealing,1,4,4.84432,38.3852
+SimulatedAnnealing,1,5,4.9534,38.3852
+SimulatedAnnealing,1,6,4.73571,38.3852
+SimulatedAnnealing,1,7,0,38.3852
+SimulatedAnnealing,1,8,5.26773,38.3852

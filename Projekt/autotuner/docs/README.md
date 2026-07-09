@@ -29,20 +29,43 @@ Mit den letzten Updates haben wir die Lücke zwischen Kompilierung und Ausführu
 * Standard-Linux/macOS Umgebung mit `g++` und `dlfcn` (POSIX)
 * Make
 
+## Projektstruktur
+
+```
+autotuner/
+├── src/       C++-Kern: alle .cpp/.hpp, Makefile, test_c2_validator.cpp
+├── eval/      Python-Experimente & Harness (convergence_/ablation_/tvm_/pytorch_comparison,
+│   │          run_gett_matrix, gett_bench, verify_autotuner, retest_regressions, …)
+│   └── notebooks/  Vergleichs-Notebooks (hero/overhead/tuningtime) + Builder + Charts
+├── data/      Input-CSVs (input.csv, input_gett.csv, *.teir)
+├── results/   Testergebnisse (gett_results/, autotuner_results.csv, verification_results.csv)
+├── docs/      README, TVM_SETUP
+├── archive/   alte Debug-/Scratch-Dateien
+└── .venv/     Python-Umgebung (numpy, matplotlib, torch)
+```
+
 ## Build & Run
 
-Das Projekt wird über ein einfaches Makefile verwaltet:
+Der C++-Kern wird über das Makefile in `src/` gebaut:
 
-1.  **Bereinigen:**
+1.  **Bauen** (aus `src/`):
     ```bash
-    make clean
+    cd src && make        # erzeugt src/teir_compiler
     ```
 
-2.  **Bauen und Testen:**
+2.  **Einzelnen Kernel tunen** (aus dem autotuner-Root):
     ```bash
-    make
-    ./teir_compiler
+    TEIR_INPUT=data/input_gett.csv src/teir_compiler
     ```
+
+3.  **Experimente/Vergleiche** (aus dem autotuner-Root, mit lokalem venv):
+    ```bash
+    .venv/bin/python eval/retest_regressions.py         # Regressionstest (6out + GEMM)
+    .venv/bin/python eval/run_gett_matrix.py            # 48-Fälle-Matrix torch/TEIR/TVM
+    .venv/bin/jupyter notebook eval/notebooks/          # Vergleichs-Notebooks
+    ```
+    Die Skripte finden `src/teir_compiler` und `data/`/`results/` automatisch (relative Pfade).
+    TVM-Setup separat: siehe `docs/TVM_SETUP.md`.
 
 ## Roadmap
 

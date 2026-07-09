@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <cmath>
+#include <cstdlib>
 
 EinsumSpec parseEinsum(const std::string& einsum) {
     EinsumSpec spec;
@@ -180,4 +182,80 @@ GEMMMapping extractGEMMMapping(const EinsumSpec& spec) {
     m.out1_axis = spec.out_axes[1];
     m.reduce_axis = spec.reduce_axes[0];
     return m;
+}
+
+// C2: Stichproben-Validierung fuer grosse Kontraktionen. Statt konstanter Eingaben
+// + Pruefung "out == Konstante" (die falsche Layouts/Strides durchrutschen laesst,
+// weil eine Konstante zufaellig getroffen wird) werden GEMUSTERTE Eingaben erwartet
+// und eine STICHPROBE von Output-Elementen exakt gegen die Referenz nachgerechnet.
+// Jedes Stichprobenelement kostet nur O(Reduktionsvolumen) statt der vollen Referenz.
+// numSamples <= 0 => Env TEIR_VALIDATE_SAMPLES (Default 64).
+bool validateEinsumSample(const TEIR& ir, const float* in0, const float* in1,
+                          const float* out, int numSamples) {
+    if (numSamples <= 0) {
+        const char* e = std::getenv("TEIR_VALIDATE_SAMPLES");
+        numSamples = e ? std::max(1, std::atoi(e)) : 64;
+    }
+
+    EinsumSpec spec = parseEinsum(ir.einsum);
+    auto in0_strides = computeStrides(spec.in0_idx, ir);
+    auto in1_strides = computeStrides(spec.in1_idx, ir);
+    auto out_strides = computeStrides(spec.out_idx, ir);
+
+    const int out_size = tensorElements(spec.out_idx, ir);
+    if (out_size <= 0) return true;
+
+    std::vector<int> out_ext(spec.out_idx.size());
+    for (size_t i = 0; i < spec.out_idx.size(); ++i)
+        out_ext[i] = extentOfChar(ir, spec.out_idx[i]);
+
+    const int nred = (int)spec.reduce_axes.size();
+    std::vector<int> rext(nred);
+    for (int i = 0; i < nred; ++i) rext[i] = extentOfChar(ir, spec.reduce_axes[i]);
+
+    int K = std::min(numSamples, out_size);
+    if (K < 1) K = 1;
+    long step = out_size / K;
+    if (step < 1) step = 1;
+
+    int coord[128];
+    std::vector<int> ridx(nred, 0);
+
+    for (int s = 0; s < K; ++s) {
+        long L = (long)s * step;
+        if (L >= out_size) L = out_size - 1;
+
+        // Linearen Output-Index -> Output-Koordinaten dekodieren (row-major).
+        for (int i = 0; i < 128; ++i) coord[i] = 0;
+        for (size_t i = 0; i < spec.out_idx.size(); ++i)
+            coord[(int)spec.out_idx[i]] =
+                (out_strides[i] > 0) ? (int)((L / out_strides[i]) % out_ext[i]) : 0;
+
+        // Referenzwert: Summe ueber alle Reduktionsachsen.
+        std::fill(ridx.begin(), ridx.end(), 0);
+        double acc = 0.0;
+        while (true) {
+            for (int i = 0; i < nred; ++i) coord[(int)spec.reduce_axes[i]] = ridx[i];
+            int in0_lin = 0, in1_lin = 0;
+            for (int i = 0; i < (int)spec.in0_idx.size(); ++i)
+                in0_lin += coord[(int)spec.in0_idx[i]] * in0_strides[i];
+            for (int i = 0; i < (int)spec.in1_idx.size(); ++i)
+                in1_lin += coord[(int)spec.in1_idx[i]] * in1_strides[i];
+            acc += (double)in0[in0_lin] * (double)in1[in1_lin];
+
+            if (nred == 0) break;
+            int pos = nred - 1;
+            while (pos >= 0) {
+                if (++ridx[pos] < rext[pos]) break;
+                ridx[pos] = 0; --pos;
+            }
+            if (pos < 0) break;
+        }
+
+        const float ref = (float)acc;
+        const float got = out[L];
+        const float tol = 1e-2f * std::max(1.0f, std::fabs(ref));
+        if (std::fabs(got - ref) > tol) return false;
+    }
+    return true;
 }
