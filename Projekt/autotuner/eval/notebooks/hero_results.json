@@ -1,0 +1,6 @@
+{
+ "Naiv\n(ungetunt, scalar)": 2.97778,
+ "TEIR\n(getunt, NEON)": 34.6999,
+ "TVM\n(getunt, MetaSchedule)": 505.0605,
+ "PyTorch\n(torch.matmul, BLAS/AMX)": 2370.9023
+}

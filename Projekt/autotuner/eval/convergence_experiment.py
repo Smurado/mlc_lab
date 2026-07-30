@@ -46,6 +46,8 @@ COST_FILTER = "0.3"
 SEARCH_OPT = "-O2"                    # schnellerer Such-Compile (fair, s. Roadmap A2)
 WARMSTART = "1"                        # SA/GA warmgestartet; Random bleibt uninformiert
 OUT_PNG = DIR / "notebooks" / "convergence.png"
+CURVES_JSON = DIR / "notebooks" / "convergence_data.json"  # Rohdaten -> Chart laedt nur noch
+REMEASURE = os.environ.get("REMEASURE", "0") == "1"        # REMEASURE=1 erzwingt Neumessung
 
 LABELS = {"sa": "SA (warm)", "ga": "GA (warm)", "random": "Random"}
 COLORS = {"sa": "#1f77b4", "ga": "#2ca02c", "random": "#d62728"}
@@ -98,28 +100,37 @@ def read_best_curve(log_path, max_trials):
 
 
 def main():
-    if not COMPILER.exists():
-        print("[ERROR] teir_compiler nicht gefunden. Erst `make` ausfuehren.")
-        sys.exit(1)
+    import json
+    # --- Daten: EINMAL messen -> convergence_data.json -> Chart laedt nur noch ---
+    if REMEASURE or not CURVES_JSON.exists():
+        if not COMPILER.exists():
+            print("[ERROR] teir_compiler nicht gefunden. Erst `make` ausfuehren.")
+            sys.exit(1)
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = make_csv(tmp)
+            curves = {s: [] for s in STRATEGIES}
+            for strat in STRATEGIES:
+                for seed in SEEDS:
+                    log = Path(tmp) / f"_log_{strat}_{seed}.csv"
+                    if log.exists():
+                        log.unlink()
+                    print(f"  running {LABELS[strat]:12s} seed={seed} ...", flush=True)
+                    run_one(csv_path, strat, seed, log)
+                    curve = read_best_curve(log, MAX_TRIALS)
+                    if curve is None:
+                        print(f"    [WARN] kein Log fuer {strat} seed={seed}")
+                        continue
+                    curves[strat].append(curve)
+        with open(CURVES_JSON, "w") as f:
+            json.dump(curves, f, indent=1)
+        print(f"  Gemessen + gespeichert -> {CURVES_JSON.name}")
+    else:
+        with open(CURVES_JSON) as f:
+            curves = json.load(f)
+        print(f"  Geladen aus {CURVES_JSON.name} (REMEASURE=1 zum Neumessen)")
 
-    with tempfile.TemporaryDirectory() as tmp:
-        csv_path = make_csv(tmp)
-        # curves[strategy] = np.array [n_seeds, max_trials]
-        curves = {s: [] for s in STRATEGIES}
-        for strat in STRATEGIES:
-            for seed in SEEDS:
-                log = Path(tmp) / f"_log_{strat}_{seed}.csv"
-                if log.exists():
-                    log.unlink()
-                print(f"  running {LABELS[strat]:12s} seed={seed} ...", flush=True)
-                run_one(csv_path, strat, seed, log)
-                curve = read_best_curve(log, MAX_TRIALS)
-                if curve is None:
-                    print(f"    [WARN] kein Log fuer {strat} seed={seed}")
-                    continue
-                curves[strat].append(curve)
-
-    plt.figure(figsize=(8, 5))
+    # --- Plot (nur aus curves; groessere Schrift, IQR erklaert) ---
+    fig, ax = plt.subplots(figsize=(10, 6))
     print("\n  Median best-GFLOPS @ letztem Trial:")
     for strat in STRATEGIES:
         data = np.array(curves[strat])
@@ -129,17 +140,19 @@ def main():
         med = np.median(data, axis=0)
         q25 = np.percentile(data, 25, axis=0)
         q75 = np.percentile(data, 75, axis=0)
-        plt.plot(x, med, label=LABELS[strat], color=COLORS[strat], linewidth=2)
-        plt.fill_between(x, q25, q75, color=COLORS[strat], alpha=0.15)
+        ax.plot(x, med, label=LABELS[strat], color=COLORS[strat], linewidth=2.5)
         print(f"    {LABELS[strat]:12s} {med[-1]:6.2f} GFLOPS  "
               f"(IQR {q25[-1]:.2f}-{q75[-1]:.2f}, {data.shape[0]} Seeds)")
 
-    plt.xlabel("Trial-Index (gleiches Budget fuer alle Strategien)")
-    plt.ylabel("Bestes GFLOPS bisher")
-    plt.title(f"Konvergenz: {EINSUM} @ {AXES.split(';')[0].split(':')[1]}  "
-              f"({len(SEEDS)} Seeds, Median + IQR)")
-    plt.legend()
-    plt.grid(True, alpha=0.3)
+    ax.set_xlabel("Trial-Index (gleiches Budget für alle Strategien)", fontsize=14)
+    ax.set_ylabel("Bestes GFLOPS bisher", fontsize=14)
+    ax.tick_params(labelsize=12)
+    ax.legend(fontsize=13, loc="lower right", framealpha=0.95)
+    ax.grid(True, alpha=0.3)
+    size = AXES.split(';')[0].split(':')[1]
+    ax.set_title(f"Konvergenz: {EINSUM} @ {size}", fontsize=17, fontweight='bold', pad=28)
+    ax.text(0.5, 1.02, f"Median über {len(SEEDS)} Seeds pro Strategie",
+            transform=ax.transAxes, ha='center', fontsize=12, color='#555')
     plt.tight_layout()
     plt.savefig(OUT_PNG, dpi=130)
     print(f"\n  Abbildung gespeichert: {OUT_PNG}")
