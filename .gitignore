@@ -36,7 +36,8 @@ test_run_debug
 # Autotuner JIT/build artifacts (Scratch landet in src/ bzw. eval/)
 Projekt/autotuner/src/teir_compiler
 Projekt/autotuner/src/*.o
-Projekt/autotuner/src/_test_c2
+# Test-Binaries (Quelltexte test_*.cpp werden natuerlich versioniert)
+Projekt/autotuner/src/_test_*
 Projekt/autotuner/**/generated_kernel.*
 Projekt/autotuner/**/_trial_*.cpp
 Projekt/autotuner/**/_trial_*.so
@@ -69,3 +70,16 @@ Projekt/autotuner/eval/notebooks/_hero_one.csv
 Projekt/autotuner/eval/notebooks/_ovh_one.csv
 Projekt/autotuner/eval/notebooks/_tt_one.csv
 Projekt/autotuner/eval/notebooks/autotuner_results.csv
+Projekt/autotuner/autotuner_results.csv
+
+# Scratch, das beim Start aus dem Repo-Root entsteht
+/generated_kernel.*
+/autotuner_results.csv
+/_b1.txt
+/_var.csv
+/_herobake.log
+/a.out
+
+# Laufzeit-Marker der Messlaeufe (die Ergebnis-CSVs daneben bleiben ERHALTEN)
+Projekt/autotuner/results/**/_worker.out
+Projekt/autotuner/results/**/_current.txt

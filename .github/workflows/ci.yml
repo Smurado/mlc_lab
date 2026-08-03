@@ -1,0 +1,83 @@
+name: TEIR CI
+
+# Laeuft nur bei Aenderungen am Autotuner oder am Workflow selbst -- die
+# week*-Ordner gehoeren zum uebrigen Kurs und sollen keine CI-Minuten kosten.
+on:
+  push:
+    paths:
+      - 'Projekt/autotuner/**'
+      - '.github/workflows/**'
+  pull_request:
+    paths:
+      - 'Projekt/autotuner/**'
+      - '.github/workflows/**'
+  workflow_dispatch:        # manuell ausloesbar
+
+# Aeltere Laeufe desselben Branches abbrechen, wenn schnell hintereinander
+# gepusht wird.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read            # mehr braucht der Workflow nicht
+
+jobs:
+  build-and-test:
+    # macos-latest ist arm64 -- dieselbe Architektur wie die Referenzmaschine
+    # (Apple M4) und wie die Entwicklungsmaschine. Homebrew liegt dort unter
+    # /opt/homebrew, daher passen die Pfade im Makefile unveraendert.
+    runs-on: macos-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: libomp installieren
+        # Der Build nutzt OpenMP ueber -Xpreprocessor -fopenmp und linkt gegen
+        # libomp aus /opt/homebrew/opt/libomp (siehe src/Makefile).
+        run: brew install libomp
+
+      - name: Werkzeuge protokollieren
+        # Hilft beim Nachvollziehen, falls sich ein Ergebnis zwischen zwei
+        # Laeufen aendert.
+        run: |
+          clang++ --version
+          uname -m
+          brew --prefix libomp
+
+      - name: Build (Compiler-Warnungen sind ein Fehler)
+        # Die Kursfolie verlangt ausdruecklich, Warnungen ernst zu nehmen.
+        # Statt -Werror (bricht bei jedem Compiler-Update) wird die Ausgabe
+        # geprueft: keine Warnung erlaubt, aber die Fehlermeldung bleibt lesbar.
+        run: |
+          set -o pipefail
+          make -C Projekt/autotuner/src 2>&1 | tee build.log
+          if grep -qi "warning:" build.log; then
+            echo "::error::Build erzeugt Compiler-Warnungen"
+            grep -i "warning:" build.log
+            exit 1
+          fi
+
+      - name: Unit-Tests
+        # 7 Suiten: C2-Validator, Messschleife, OOM-Guard, Kernel-Validierung,
+        # Einsum, Parser, IR-Passes. Alle deterministisch, keine Messungen.
+        run: make -C Projekt/autotuner/src test
+
+      - name: Rauchtest (Ende zu Ende)
+        # Prueft, dass Parser -> Codegen -> JIT -> Validierung real zusammen
+        # funktionieren. Bewusst OHNE Leistungspruefung.
+        run: Projekt/autotuner/eval/smoke_test.sh
+
+      # Bewusst NICHT in der CI: eval/retest_regressions.py und alle Benchmarks.
+      # Sie dauern 10+ Minuten, und Messzahlen von einem geteilten Runner sind
+      # wertlos -- fremde Last verfaelscht sie. Messungen laufen ausschliesslich
+      # lokal auf der idlen Referenzmaschine.
+
+      - name: Build-Log sichern
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 7
