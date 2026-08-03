@@ -1,4 +1,7 @@
 #include "benchmark.hpp"
+#include "bench_loop.hpp"
+#include "kernel_validation.hpp"
+#include "tensor_guard.hpp"
 #include "codegen.hpp"
 #include "einsum.hpp"
 #include <chrono>
@@ -207,7 +210,6 @@ BenchmarkResult benchmark(const TEIR& ir) {
     // --- Tensor-Groessen + FLOPs ---
     int in0_size, in1_size, out_size;
     double total_flops;
-    bool use_reference = false;
     int reduction_size = 0;
     int gemm_P = 0;
 
@@ -227,14 +229,11 @@ BenchmarkResult benchmark(const TEIR& ir) {
         out_size = tensorElements(spec.out_idx, ir);
         total_flops = einsumFlops(ir);
 
-        double total_iters = total_flops / 2.0;
-        use_reference = (total_iters <= 100000000.0);
-
         reduction_size = 1;
         for (char c : spec.reduce_axes) reduction_size *= extentOfChar(ir, c);
 
-        const int MAX_TENSOR = 100000000;
-        if (in0_size > MAX_TENSOR || in1_size > MAX_TENSOR || out_size > MAX_TENSOR) {
+        // OOM-Schutz, Grenze siehe tensor_guard.hpp (TEIR_MAX_TENSOR).
+        if (tensorTooLarge(in0_size, in1_size, out_size)) {
             dlclose(handle);
             std::remove(src.c_str());
             std::remove(lib.c_str());
@@ -250,11 +249,7 @@ BenchmarkResult benchmark(const TEIR& ir) {
         std::fill(in0.begin(), in0.end(), 1.0f);
         std::fill(in1.begin(), in1.end(), 2.0f);
     } else {
-        // C2: Einsum-Pfad IMMER mit Muster fuellen — sowohl die volle Referenz als
-        // auch die Stichproben-Validierung brauchen variierende Werte, damit ein
-        // falsches Layout nicht zufaellig eine Konstante trifft und durchrutscht.
-        for (int i = 0; i < in0_size; ++i) in0[i] = (float)((i % 13) + 1) / 13.0f;
-        for (int i = 0; i < in1_size; ++i) in1[i] = (float)((i % 7) + 1) / 7.0f;
+        fillEinsumInputs(in0, in1);   // siehe kernel_validation.hpp
     }
 
     // --- Warmup + Korrektheitspruefung ---
@@ -274,21 +269,11 @@ BenchmarkResult benchmark(const TEIR& ir) {
                 return INVALID;
             }
         }
-    } else if (use_reference) {
-        std::vector<float> ref(out_size, 0.0f);
-        referenceEinsum(ir, in0.data(), in1.data(), ref.data());
-        for (int i = 0; i < out_size; ++i) {
-            float tol = 1e-2f * std::max(1.0f, std::abs(ref[i]));
-            if (std::abs(out[i] - ref[i]) > tol) {
-                cleanup_invalid();
-                return INVALID;
-            }
-        }
     } else {
-        // C2: grosse Kontraktion — volle Referenz zu teuer. Stichprobe von
-        // Output-Elementen exakt nachrechnen (faengt Layout-/Stride-Fehler, die der
-        // fruehere Konstanten-Check "out == 2*reduction_size" durchrutschen liess).
-        if (!validateEinsumSample(ir, in0.data(), in1.data(), out.data())) {
+        // Volle Referenz oder C2-Stichprobe — Entscheidung und Toleranz stehen in
+        // kernel_validation.hpp, damit die Endmessung in main.cpp exakt dasselbe
+        // prueft wie die Suche hier.
+        if (!validateEinsumOutput(ir, in0.data(), in1.data(), out.data(), out_size)) {
             cleanup_invalid();
             return INVALID;
         }
@@ -315,30 +300,45 @@ BenchmarkResult benchmark(const TEIR& ir) {
         const char* e = std::getenv("TEIR_BENCH_CAP_MS");
         return e ? std::max(1.0, std::atof(e)) : 300.0;
     }();
+    // A6: Adaptive Blockgroesse. Der Cap kann nur ZWISCHEN zwei Bloecken greifen,
+    // also kostet ein fixer Block von 64 bei langsamen Kernels ein Vielfaches des
+    // Caps (64 x 633 ms = 40 s statt 300 ms) -- und zwar dreimal, wegen
+    // BENCH_REPEATS. Genau das hat die GETT-Matrix auf 1-2 Trials pro Fall
+    // gedrosselt. Der Block existiert nur, um die Timer-Ablesung (~25 ns) zu
+    // amortisieren; bei einem 633-ms-Kernel ist dafuer EIN Aufruf genug.
+    // Adaptiv wird die Blockgroesse aus der gemessenen Kernel-Zeit bestimmt.
+    // Default = 0 = altes Verhalten (fixer Block), damit alte Zahlen
+    // reproduzierbar bleiben.
+    static const bool BENCH_ADAPTIVE = [] {
+        const char* e = std::getenv("TEIR_BENCH_ADAPTIVE");
+        return e && std::atoi(e) != 0;
+    }();
 
-    // Zeit-Cap/Messfenster werden INKREMENTELL (in Chunks) geprueft, nicht erst
+    // Zeit-Cap/Messfenster werden INKREMENTELL (in Bloecken) geprueft, nicht erst
     // nach einer festen Iterationszahl. Jeder rep laeuft mindestens BENCH_MIN_MS
-    // (Stabilitaet) und hoechstens BENCH_CAP_MS (Durchsatz). Das Iter-Ceiling ist
-    // nur ein Sicherheitsnetz gegen pathologische Endlosschleifen.
-    const int CHUNK = 64;
-    const long SAFETY_ITER_CEIL = 50000000L;
+    // (Stabilitaet) und hoechstens BENCH_CAP_MS (Durchsatz). Schleife + Block-
+    // groesse stehen in bench_loop.hpp -- gemeinsam mit der Endmessung in
+    // main.cpp und dort per Unit-Test abgedeckt (make test).
+    BlockPolicy pol;
+    pol.adaptive    = BENCH_ADAPTIVE;
+    pol.minWindowMs = BENCH_MIN_MS;
+    pol.capMs       = BENCH_CAP_MS;
+
     volatile double best_ms = std::numeric_limits<double>::infinity();
     for (int rep = 0; rep < BENCH_REPEATS; ++rep) {
-        auto start = std::chrono::high_resolution_clock::now();
-        long done = 0;
-        double blockMs = 0.0;
-        while (blockMs < BENCH_MIN_MS && done < SAFETY_ITER_CEIL) {
-            for (int k = 0; k < CHUNK; ++k) {
-                kernel(in0.data(), in1.data(), out.data());
-            }
-            done += CHUNK;
-            blockMs = std::chrono::duration<double, std::milli>(
-                          std::chrono::high_resolution_clock::now() - start).count();
-            if (blockMs >= BENCH_CAP_MS) break;
-        }
-        const double ms = (done > 0) ? blockMs / done : blockMs;
-        if (ms < best_ms) best_ms = ms;
-        if (blockMs >= BENCH_CAP_MS) break;
+        const auto start = std::chrono::high_resolution_clock::now();
+        const BlockResult r = runBlockLoop(
+            pol,
+            [&](long n) {
+                for (long k = 0; k < n; ++k)
+                    kernel(in0.data(), in1.data(), out.data());
+            },
+            [&] {
+                return std::chrono::duration<double, std::milli>(
+                           std::chrono::high_resolution_clock::now() - start).count();
+            });
+        if (r.perCallMs() < best_ms) best_ms = r.perCallMs();
+        if (r.elapsedMs >= BENCH_CAP_MS) break;
     }
 
     dlclose(handle);

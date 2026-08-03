@@ -5,6 +5,9 @@
 #include "codegen.hpp"
 #include "einsum.hpp"
 #include "cost_model.hpp"
+#include "bench_loop.hpp"
+#include "kernel_validation.hpp"
+#include "tensor_guard.hpp"
 
 #include <cstdlib>
 #include <cmath>
@@ -234,47 +237,30 @@ int main()
             int in1_size = tensorElements(spec.in1_idx, ir);
             int out_size = tensorElements(spec.out_idx, ir);
 
-            const int MAX_TENSOR = 100000000;
-            if (in0_size > MAX_TENSOR || in1_size > MAX_TENSOR || out_size > MAX_TENSOR)
+            // OOM-Schutz, Grenze siehe tensor_guard.hpp (TEIR_MAX_TENSOR).
+            // Bewusst identisch mit der Pruefung in benchmark.cpp: sonst laeuft die
+            // Suche durch, aber die Endmessung bricht hier ab -> "partial" ohne
+            // [PERFORMANCE]-Zeile.
+            if (tensorTooLarge(in0_size, in1_size, out_size))
             {
                 std::cout << "[SKIP] Tensor zu gross fuer Validierung ("
-                          << in0_size << " / " << in1_size << " / " << out_size << " Elemente).\n";
+                          << in0_size << " / " << in1_size << " / " << out_size
+                          << " Elemente, Grenze " << maxTensorElements()
+                          << " -- anhebbar via TEIR_MAX_TENSOR).\n";
                 dlclose(handle);
                 return 0;
             }
 
-            double total_iters = einsumFlops(ir) / 2.0;
-            bool use_reference = (total_iters <= 100000000.0);
-
             std::vector<float> in0(in0_size), in1(in1_size), out(out_size, 0.0f);
 
-            // C2: Einsum-Pfad immer mit Muster fuellen (auch der Nicht-Referenz-Fall
-            // nutzt jetzt die Stichproben-Validierung, die variierende Werte braucht).
-            for (int i = 0; i < in0_size; ++i) in0[i] = (float)((i % 13) + 1) / 13.0f;
-            for (int i = 0; i < in1_size; ++i) in1[i] = (float)((i % 7) + 1) / 7.0f;
+            fillEinsumInputs(in0, in1);   // siehe kernel_validation.hpp
 
             kernel(in0.data(), in1.data(), out.data());
 
-            if (use_reference)
-            {
-                std::vector<float> ref(out_size, 0.0f);
-                referenceEinsum(ir, in0.data(), in1.data(), ref.data());
-                for (int i = 0; i < out_size; ++i)
-                {
-                    float tol = 1e-2f * std::max(1.0f, std::abs(ref[i]));
-                    if (std::abs(out[i] - ref[i]) > tol)
-                    {
-                        ok = false;
-                        break;
-                    }
-                }
-            }
-            else
-            {
-                // C2: grosse Kontraktion — Stichproben-Validierung statt Konstanten-Check.
-                if (!validateEinsumSample(ir, in0.data(), in1.data(), out.data()))
-                    ok = false;
-            }
+            // Exakt dieselbe Pruefung wie in der Suche (benchmark.cpp) -- volle
+            // Referenz oder C2-Stichprobe, Entscheidung und Toleranz zentral in
+            // kernel_validation.hpp.
+            ok = validateEinsumOutput(ir, in0.data(), in1.data(), out.data(), out_size);
         }
 
         if (ok)
@@ -322,29 +308,38 @@ int main()
                 // Iterationszahl. Ein winziger Kernel wuerde sonst nach 1000
                 // Aufrufen unter Timer-/Loop-Rausch gemessen -> instabile GFLOPS
                 // ueber Seeds. Mindestfenster = Stabilitaet, Obergrenze = Zeitschutz.
-                const double MIN_MEASURE_MS = 50.0;
-                const double MAX_MEASURE_MS = 1000.0;
-                const int    CHUNK = 64;
-                const long   SAFETY_ITER_CEIL = 50000000L;
+                // A6: Diese Schleife liefert die [PERFORMANCE]-Zahl, also den
+                // Wert, der in allen Auswertungen landet -- und sie ist teurer
+                // als die Such-Messung: 5 Wiederholungen, und der Deckel bricht
+                // nur die innere Schleife ab. Bei einem 763-ms-Kernel sind das
+                // 5 x 64 x 763 ms = 244 s fuer EINE Endmessung. Adaptiv bleiben
+                // es 5 Wiederholungen (Statistik unveraendert), aber mit je
+                // einem Aufruf statt 64. Schleife: bench_loop.hpp (make test).
+                BlockPolicy pol;
+                pol.adaptive = [] {
+                    const char* e = std::getenv("TEIR_BENCH_ADAPTIVE");
+                    return e && std::atoi(e) != 0;
+                }();
+                pol.minWindowMs = 50.0;
+                pol.capMs       = 1000.0;
+
                 volatile double best_ms = 1e18;
                 long usedIters = 0;
                 for (int rep = 0; rep < 5; ++rep)
                 {
-                    auto t0 = std::chrono::high_resolution_clock::now();
-                    long done = 0;
-                    double blockMs = 0.0;
-                    while (blockMs < MIN_MEASURE_MS && done < SAFETY_ITER_CEIL)
-                    {
-                        for (int k = 0; k < CHUNK; ++k)
-                            kernel(t_a.data(), t_b.data(), t_c.data());
-                        done += CHUNK;
-                        blockMs = std::chrono::duration<double, std::milli>(
-                                      std::chrono::high_resolution_clock::now() - t0).count();
-                        if (blockMs >= MAX_MEASURE_MS) break;
-                    }
-                    const double ms = (done > 0) ? blockMs / done : blockMs;
-                    if (ms < best_ms) best_ms = ms;
-                    usedIters = done;
+                    const auto t0 = std::chrono::high_resolution_clock::now();
+                    const BlockResult r = runBlockLoop(
+                        pol,
+                        [&](long n) {
+                            for (long k = 0; k < n; ++k)
+                                kernel(t_a.data(), t_b.data(), t_c.data());
+                        },
+                        [&] {
+                            return std::chrono::duration<double, std::milli>(
+                                       std::chrono::high_resolution_clock::now() - t0).count();
+                        });
+                    if (r.perCallMs() < best_ms) best_ms = r.perCallMs();
+                    usedIters = r.calls;
                 }
                 double gflops = (total_flops / 1e9) / (best_ms / 1000.0);
                 std::cout << "[PERFORMANCE] " << best_ms << " ms ("

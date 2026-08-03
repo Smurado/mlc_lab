@@ -23,13 +23,48 @@ $(TARGET): $(OBJS)
 	@echo "Compiling $<..."
 	@$(CXX) $(CXXFLAGS) $(DEFINES) -c $< -o $@
 
-# C2: Akzeptanztest fuer die Stichproben-Validierung (Layout-Bug wird gefangen).
-test: einsum.o
+# Unit-Tests. `make test` laeuft alle.
+#   C2:    Akzeptanztest fuer die Stichproben-Validierung (Layout-Bug wird gefangen).
+#   bench: Messschleife (bench_loop.hpp) -- Deckel-Einhaltung, Blockgroesse,
+#          Messwert-Identitaet alt/adaptiv.
+#   guard: OOM-Guard (tensor_guard.hpp) -- Grenze, Env-Auswertung, die 3 GETT-Faelle.
+#   valid: Kernel-Validierung (kernel_validation.hpp) -- Fuellmuster, Toleranz,
+#          Referenz-/Stichproben-Schwelle, Erkennung von Layout-/Nullausgabe-Fehlern.
+#   einsum: Einstein-Notation -- Zerlegung, gesplittete Achsen, Strides, isGEMMForm.
+#   parser: CSV -> IR (Eingangspunkt), inkl. Quotes und Fehlerfaelle.
+#   passes: IR-Transformationen -- Split, Reorder, Parallelisierung.
+test: test-c2 test-bench test-guard test-valid test-einsum test-parser test-passes
+
+test-c2: einsum.o
 	@$(CXX) $(CXXFLAGS) test_c2_validator.cpp einsum.o -o _test_c2
 	@./_test_c2
 
+test-bench:
+	@$(CXX) $(CXXFLAGS) test_bench_loop.cpp -o _test_bench
+	@./_test_bench
+
+test-guard:
+	@$(CXX) $(CXXFLAGS) test_tensor_guard.cpp -o _test_guard
+	@./_test_guard
+
+test-valid: einsum.o
+	@$(CXX) $(CXXFLAGS) test_kernel_validation.cpp einsum.o -o _test_valid
+	@./_test_valid
+
+test-einsum: einsum.o
+	@$(CXX) $(CXXFLAGS) test_einsum.cpp einsum.o -o _test_einsum
+	@./_test_einsum
+
+test-parser: parser.o
+	@$(CXX) $(CXXFLAGS) test_parser.cpp parser.o -o _test_parser
+	@./_test_parser
+
+test-passes: passes.o
+	@$(CXX) $(CXXFLAGS) test_passes.cpp passes.o -o _test_passes
+	@./_test_passes
+
 clean:
 	@echo "Cleaning up..."
-	@rm -f $(OBJS) $(TARGET) results.csv autotuner_results.csv generated_kernel.cpp generated_kernel.so _trial_*.cpp _trial_*.so _test_c2
+	@rm -f $(OBJS) $(TARGET) results.csv autotuner_results.csv generated_kernel.cpp generated_kernel.so _trial_*.cpp _trial_*.so _test_c2 _test_bench _test_guard _test_valid _test_einsum _test_parser _test_passes
 
-.PHONY: all clean test
+.PHONY: all clean test test-c2 test-bench test-guard test-valid test-einsum test-parser test-passes
