@@ -1,0 +1,4 @@
+name,tensors,axes,primitives,schedule,invokes,einsum
+contraction_abcde_efbad_cf,in0:f32;in1:f32;out:f32,a:48;c:24;b:36;e:48;d:36;f:36,zero;gemm,a:sequential;b:sequential;c:sequential;d:sequential;e:sequential;f:sequential,zero;gemm,abcde-efbad-cf
+contraction_abcde_ecbfa_fd,in0:f32;in1:f32;out:f32,a:48;c:36;b:36;e:48;d:24;f:48,zero;gemm,a:sequential;b:sequential;c:sequential;d:sequential;e:sequential;f:sequential,zero;gemm,abcde-ecbfa-fd
+contraction_abcde_efcad_bf,in0:f32;in1:f32;out:f32,a:48;c:36;b:24;e:48;d:36;f:36,zero;gemm,a:sequential;b:sequential;c:sequential;d:sequential;e:sequential;f:sequential,zero;gemm,abcde-efcad-bf

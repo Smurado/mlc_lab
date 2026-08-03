@@ -1,0 +1,2 @@
+name,tensors,axes,primitives,schedule,invokes,einsum
+contraction_abcd_eafb_fdec,in0:f32;in1:f32;out:f32,a:96;c:84;b:84;e:96;d:84;f:96,zero;gemm,a:sequential;b:sequential;c:sequential;d:sequential;e:sequential;f:sequential,zero;gemm,abcd-eafb-fdec

@@ -1,0 +1,4 @@
+name,gflops,status,seconds,timestamp
+contraction_abc_bda_dc,30.2978,ok,634.3,2026-08-01 13:00:06
+contraction_abc_dca_bd,17.9955,ok,721.6,2026-08-01 13:12:07
+contraction_abcd_dbea_ec,22.0519,partial-timeout,2088.1,2026-08-01 13:46:55

@@ -1,0 +1,207 @@
+====================================================================================
+A/B-MESSUNG   22 Laeufe gesamt   (Test A: 18, Test B: 4)
+  Test A = NO_AUTOTUNE, identischer Kernel, nur Messschleife unterschiedlich
+  Test B = volle SA-Suche, Seed 42, 12 Trials
+  Teuer sind: Test A 'gross/alt' und Test B 'gross/alt' (fixer Block 64).
+====================================================================================
+
+[1/22] A | klein abc-bda-dc @ 32 | seq | alt #1 | BENCH_ADAPTIVE=0  ... START   (gesamt bisher 0m00s)
+      ->    41.059 GFLOPS   Kernel     0.0511 ms   Wandzeit     0.6s
+      (1/22 fertig, gesamt 0m00s, grobe ETA Rest 0m13s)
+
+[2/22] A | klein abc-bda-dc @ 32 | seq | alt #2 | BENCH_ADAPTIVE=0  ... START   (gesamt bisher 0m00s)
+      ->    41.325 GFLOPS   Kernel     0.0507 ms   Wandzeit     0.5s
+      (2/22 fertig, gesamt 0m01s, grobe ETA Rest 0m11s)
+
+[3/22] A | klein abc-bda-dc @ 32 | seq | alt #3 | BENCH_ADAPTIVE=0  ... START   (gesamt bisher 0m01s)
+      ->    40.323 GFLOPS   Kernel     0.0520 ms   Wandzeit     0.5s
+      (3/22 fertig, gesamt 0m01s, grobe ETA Rest 0m10s)
+
+[4/22] A | klein abc-bda-dc @ 32 | seq | adaptiv #1 | BENCH_ADAPTIVE=1  ... START   (gesamt bisher 0m01s)
+      ->    40.804 GFLOPS   Kernel     0.0514 ms   Wandzeit     0.5s
+      (4/22 fertig, gesamt 0m02s, grobe ETA Rest 0m09s)
+
+[5/22] A | klein abc-bda-dc @ 32 | seq | adaptiv #2 | BENCH_ADAPTIVE=1  ... START   (gesamt bisher 0m02s)
+      ->    41.018 GFLOPS   Kernel     0.0511 ms   Wandzeit     0.5s
+      (5/22 fertig, gesamt 0m02s, grobe ETA Rest 0m09s)
+
+[6/22] A | klein abc-bda-dc @ 32 | seq | adaptiv #3 | BENCH_ADAPTIVE=1  ... START   (gesamt bisher 0m02s)
+      ->    41.208 GFLOPS   Kernel     0.0509 ms   Wandzeit     0.5s
+      (6/22 fertig, gesamt 0m03s, grobe ETA Rest 0m08s)
+
+[7/22] A | klein abc-bda-dc @ 32 | par | alt #1 | BENCH_ADAPTIVE=0  ... START   (gesamt bisher 0m03s)
+      ->    38.574 GFLOPS   Kernel     0.0544 ms   Wandzeit     0.7s
+      (7/22 fertig, gesamt 0m03s, grobe ETA Rest 0m08s)
+
+[8/22] A | klein abc-bda-dc @ 32 | par | alt #2 | BENCH_ADAPTIVE=0  ... START   (gesamt bisher 0m03s)
+      ->    39.786 GFLOPS   Kernel     0.0527 ms   Wandzeit     0.5s
+      (8/22 fertig, gesamt 0m04s, grobe ETA Rest 0m07s)
+
+[9/22] A | klein abc-bda-dc @ 32 | par | alt #3 | BENCH_ADAPTIVE=0  ... START   (gesamt bisher 0m04s)
+      ->    38.998 GFLOPS   Kernel     0.0538 ms   Wandzeit     0.5s
+      (9/22 fertig, gesamt 0m04s, grobe ETA Rest 0m07s)
+
+[10/22] A | klein abc-bda-dc @ 32 | par | adaptiv #1 | BENCH_ADAPTIVE=1  ... START   (gesamt bisher 0m04s)
+      ->    39.026 GFLOPS   Kernel     0.0537 ms   Wandzeit     0.5s
+      (10/22 fertig, gesamt 0m05s, grobe ETA Rest 0m06s)
+
+[11/22] A | klein abc-bda-dc @ 32 | par | adaptiv #2 | BENCH_ADAPTIVE=1  ... START   (gesamt bisher 0m05s)
+      ->    40.173 GFLOPS   Kernel     0.0522 ms   Wandzeit     0.5s
+      (11/22 fertig, gesamt 0m05s, grobe ETA Rest 0m05s)
+
+[12/22] A | klein abc-bda-dc @ 32 | par | adaptiv #3 | BENCH_ADAPTIVE=1  ... START   (gesamt bisher 0m05s)
+      ->    39.689 GFLOPS   Kernel     0.0528 ms   Wandzeit     0.5s
+      (12/22 fertig, gesamt 0m06s, grobe ETA Rest 0m05s)
+
+[13/22] A | gross abc-dca-bd @ 384er | par | alt #1 | BENCH_ADAPTIVE=0  ... START   (gesamt bisher 0m06s)
+      · laeuft [    15s] … 
+      · laeuft [    30s] … 
+      · laeuft [    45s] … 
+      · laeuft [    60s] … 
+      · laeuft [    75s] … 
+      · laeuft [    90s] … 
+      · laeuft [   105s] … 
+      · laeuft [   120s] … 
+      · laeuft [   135s] … 
+      · laeuft [   150s] … 
+      · laeuft [   165s] … 
+      · laeuft [   181s] … 
+      · laeuft [   196s] … 
+      · laeuft [   211s] … 
+      ->     4.146 GFLOPS   Kernel   641.8550 ms   Wandzeit   222.1s
+      (13/22 fertig, gesamt 3m48s, grobe ETA Rest 2m38s)
+
+[14/22] A | gross abc-dca-bd @ 384er | par | alt #2 | BENCH_ADAPTIVE=0  ... START   (gesamt bisher 3m48s)
+      · laeuft [    15s] … 
+      · laeuft [    30s] … 
+      · laeuft [    45s] … 
+      · laeuft [    60s] … 
+      · laeuft [    75s] … 
+      · laeuft [    90s] … 
+      · laeuft [   105s] … 
+      · laeuft [   120s] … 
+      · laeuft [   135s] … 
+      · laeuft [   150s] … 
+      · laeuft [   165s] … 
+      · laeuft [   181s] … 
+      · laeuft [   196s] … 
+      · laeuft [   211s] … 
+      · laeuft [   226s] … 
+      ->     3.719 GFLOPS   Kernel   715.5960 ms   Wandzeit   237.7s
+      (14/22 fertig, gesamt 7m46s, grobe ETA Rest 4m26s)
+
+[15/22] A | gross abc-dca-bd @ 384er | par | alt #3 | BENCH_ADAPTIVE=0  ... START   (gesamt bisher 7m46s)
+      · laeuft [    15s] … 
+      · laeuft [    30s] … 
+      · laeuft [    45s] … 
+      · laeuft [    60s] … 
+      · laeuft [    75s] … 
+      · laeuft [    90s] … 
+      · laeuft [   105s] … 
+      · laeuft [   120s] … 
+      · laeuft [   135s] … 
+      · laeuft [   150s] … 
+      · laeuft [   165s] … 
+      · laeuft [   180s] … 
+      · laeuft [   196s] … 
+      · laeuft [   211s] … 
+      · laeuft [   226s] … 
+      ->     3.730 GFLOPS   Kernel   713.4860 ms   Wandzeit   230.0s
+      (15/22 fertig, gesamt 11m36s, grobe ETA Rest 5m24s)
+
+[16/22] A | gross abc-dca-bd @ 384er | par | adaptiv #1 | BENCH_ADAPTIVE=1  ... START   (gesamt bisher 11m36s)
+      ->     3.957 GFLOPS   Kernel   672.5370 ms   Wandzeit     4.6s
+      (16/22 fertig, gesamt 11m40s, grobe ETA Rest 4m22s)
+
+[17/22] A | gross abc-dca-bd @ 384er | par | adaptiv #2 | BENCH_ADAPTIVE=1  ... START   (gesamt bisher 11m40s)
+      ->     3.898 GFLOPS   Kernel   682.7380 ms   Wandzeit     4.5s
+      (17/22 fertig, gesamt 11m45s, grobe ETA Rest 3m27s)
+
+[18/22] A | gross abc-dca-bd @ 384er | par | adaptiv #3 | BENCH_ADAPTIVE=1  ... START   (gesamt bisher 11m45s)
+      ->     3.953 GFLOPS   Kernel   673.3170 ms   Wandzeit     4.5s
+      (18/22 fertig, gesamt 11m49s, grobe ETA Rest 2m37s)
+
+[19/22] B | klein abc-bda-dc @ 32 | suche | alt | BENCH_ADAPTIVE=0  ... START   (gesamt bisher 11m49s)
+      ->    39.843 GFLOPS   Kernel     0.0526 ms   Wandzeit     9.3s
+      (19/22 fertig, gesamt 11m59s, grobe ETA Rest 1m53s)
+
+[20/22] B | klein abc-bda-dc @ 32 | suche | adaptiv | BENCH_ADAPTIVE=1  ... START   (gesamt bisher 11m59s)
+      ->    40.037 GFLOPS   Kernel     0.0524 ms   Wandzeit     9.8s
+      (20/22 fertig, gesamt 12m08s, grobe ETA Rest 1m12s)
+
+[21/22] B | gross abc-dca-bd @ 384er | suche | alt | BENCH_ADAPTIVE=0  ... START   (gesamt bisher 12m08s)
+      · laeuft [    15s] … [AUTOTUNER] Jeder Trial wird JIT-kompiliert, auf Korrektheit geprueft und real gebenchma
+      · laeuft [    30s] … [AUTOTUNER] Jeder Trial wird JIT-kompiliert, auf Korrektheit geprueft und real gebenchma
+      · laeuft [    45s] … [AUTOTUNER] Jeder Trial wird JIT-kompiliert, auf Korrektheit geprueft und real gebenchma
+      · laeuft [    60s] … [NEW BEST] Trial #1 | SF=2, Parallel=a -> Zeit: 701.904 ms (3.79153 GFLOPS)
+      · laeuft [    76s] … [NEW BEST] Trial #1 | SF=2, Parallel=a -> Zeit: 701.904 ms (3.79153 GFLOPS)
+      · laeuft [    91s] … [NEW BEST] Trial #1 | SF=2, Parallel=a -> Zeit: 701.904 ms (3.79153 GFLOPS)
+      · laeuft [   106s] … [NEW BEST] Trial #1 | SF=2, Parallel=a -> Zeit: 701.904 ms (3.79153 GFLOPS)
+      · laeuft [   121s] … [NEW BEST] Trial #1 | SF=2, Parallel=a -> Zeit: 701.904 ms (3.79153 GFLOPS)
+      · laeuft [   135s] … [NEW BEST] Trial #1 | SF=2, Parallel=a -> Zeit: 701.904 ms (3.79153 GFLOPS)
+      · laeuft [   150s] … [NEW BEST] Trial #1 | SF=2, Parallel=a -> Zeit: 701.904 ms (3.79153 GFLOPS)
+      · laeuft [   165s] … [NEW BEST] Trial #4 | SF=4, Parallel=b -> Zeit: 251.947 ms (10.5629 GFLOPS)
+      · laeuft [   180s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   195s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   211s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   226s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   241s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   256s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   271s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   286s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   300s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   315s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   330s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   345s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   360s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   375s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   390s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   406s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   421s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   436s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   451s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   466s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   481s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   496s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   510s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   525s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   540s] … [NEW BEST] Trial #5 | SF=4, Parallel=b -> Zeit: 246.304 ms (10.8049 GFLOPS)
+      · laeuft [   555s] … [NEW BEST] Trial #9 | SF=2, Parallel=a -> Zeit: 217.536 ms (12.2338 GFLOPS)
+      · laeuft [   570s] … [NEW BEST] Trial #9 | SF=2, Parallel=a -> Zeit: 217.536 ms (12.2338 GFLOPS)
+      · laeuft [   585s] … [NEW BEST] Trial #9 | SF=2, Parallel=a -> Zeit: 217.536 ms (12.2338 GFLOPS)
+      · laeuft [   600s] … [NEW BEST] Trial #9 | SF=2, Parallel=a -> Zeit: 217.536 ms (12.2338 GFLOPS)
+      · laeuft [   616s] … [NEW BEST] Trial #9 | SF=2, Parallel=a -> Zeit: 217.536 ms (12.2338 GFLOPS)
+      · laeuft [   631s] … [NEW BEST] Trial #9 | SF=2, Parallel=a -> Zeit: 217.536 ms (12.2338 GFLOPS)
+      · laeuft [   646s] … [NEW BEST] Trial #9 | SF=2, Parallel=a -> Zeit: 217.536 ms (12.2338 GFLOPS)
+      · laeuft [   661s] … [NEW BEST] Trial #9 | SF=2, Parallel=a -> Zeit: 217.536 ms (12.2338 GFLOPS)
+      · laeuft [   676s] … [NEW BEST] Trial #9 | SF=2, Parallel=a -> Zeit: 217.536 ms (12.2338 GFLOPS)
+      · laeuft [   691s] … [NEW BEST] Trial #9 | SF=2, Parallel=a -> Zeit: 217.536 ms (12.2338 GFLOPS)
+      · laeuft [   706s] … [NEW BEST] Trial #9 | SF=2, Parallel=a -> Zeit: 217.536 ms (12.2338 GFLOPS)
+      · laeuft [   720s] … [NEW BEST] Trial #9 | SF=2, Parallel=a -> Zeit: 217.536 ms (12.2338 GFLOPS)
+      · laeuft [   735s] … [NEW BEST] Trial #9 | SF=2, Parallel=a -> Zeit: 217.536 ms (12.2338 GFLOPS)
+      · laeuft [   750s] … [NEW BEST] Trial #9 | SF=2, Parallel=a -> Zeit: 217.536 ms (12.2338 GFLOPS)
+      · laeuft [   765s] … [NEW BEST] Trial #9 | SF=2, Parallel=a -> Zeit: 217.536 ms (12.2338 GFLOPS)
+      · laeuft [   780s] … [NEW BEST] Trial #9 | SF=2, Parallel=a -> Zeit: 217.536 ms (12.2338 GFLOPS)
+      · laeuft [   795s] … [NEW BEST] Trial #9 | SF=2, Parallel=a -> Zeit: 217.536 ms (12.2338 GFLOPS)
+      · laeuft [   810s] … [NEW BEST] Trial #9 | SF=2, Parallel=a -> Zeit: 217.536 ms (12.2338 GFLOPS)
+      · laeuft [   826s] … [EARLY STOP] Abbruch nach 12 Trials: Trial-Budget erreicht
+      · laeuft [   841s] … [EARLY STOP] Abbruch nach 12 Trials: Trial-Budget erreicht
+      · laeuft [   856s] … [EARLY STOP] Abbruch nach 12 Trials: Trial-Budget erreicht
+      · laeuft [   871s] … [EARLY STOP] Abbruch nach 12 Trials: Trial-Budget erreicht
+      ->    13.195 GFLOPS   Kernel   201.6850 ms   Wandzeit   878.7s
+      (21/22 fertig, gesamt 26m47s, grobe ETA Rest 1m16s)
+
+[22/22] B | gross abc-dca-bd @ 384er | suche | adaptiv | BENCH_ADAPTIVE=1  ... START   (gesamt bisher 26m47s)
+      · laeuft [    15s] … [NEW BEST] Trial #6 | SF=2, Parallel=a -> Zeit: 630.193 ms (4.22297 GFLOPS)
+      · laeuft [    30s] … [NEW BEST] Trial #8 | SF=2, Parallel=a -> Zeit: 193.445 ms (13.7573 GFLOPS)
+      ->    14.054 GFLOPS   Kernel   189.3620 ms   Wandzeit    42.9s
+      (22/22 fertig, gesamt 27m30s, grobe ETA Rest 0m00s)
+
+====================================================================================
+AUSWERTUNG
+====================================================================================
+Traceback (most recent call last):
+  File "/Users/justin/Developer/Repositories/mlc_lab/Projekt/autotuner/eval/bench_loop_ab.py", line 159, in <module>
+    for label, _, _, _ in CASES:
+        ^^^^^^^^^^^^^^
+ValueError: too many values to unpack (expected 4, got 5)

@@ -1,0 +1,13 @@
+name,tensors,axes,primitives,schedule,invokes,einsum
+contraction_abcd_eafb_fdec,in0:f32;in1:f32;out:f32,a:96;c:84;b:84;e:96;d:84;f:96,zero;gemm,a:sequential;b:sequential;c:sequential;d:sequential;e:sequential;f:sequential,zero;gemm,abcd-eafb-fdec
+contraction_abcd_eafc_bfde,in0:f32;in1:f32;out:f32,a:96;c:84;b:96;e:96;d:84;f:84,zero;gemm,a:sequential;b:sequential;c:sequential;d:sequential;e:sequential;f:sequential,zero;gemm,abcd-eafc-bfde
+contraction_abcd_eafd_fbec,in0:f32;in1:f32;out:f32,a:96;c:84;b:84;e:96;d:84;f:96,zero;gemm,a:sequential;b:sequential;c:sequential;d:sequential;e:sequential;f:sequential,zero;gemm,abcd-eafd-fbec
+contraction_abcd_aebf_dfce,in0:f32;in1:f32;out:f32,a:96;c:84;b:84;e:84;d:96;f:84,zero;gemm,a:sequential;b:sequential;c:sequential;d:sequential;e:sequential;f:sequential,zero;gemm,abcd-aebf-dfce
+contraction_abcd_aebf_fdec,in0:f32;in1:f32;out:f32,a:96;c:84;b:84;e:84;d:84;f:96,zero;gemm,a:sequential;b:sequential;c:sequential;d:sequential;e:sequential;f:sequential,zero;gemm,abcd-aebf-fdec
+contraction_abcd_aecf_bfde,in0:f32;in1:f32;out:f32,a:96;c:84;b:96;e:84;d:84;f:84,zero;gemm,a:sequential;b:sequential;c:sequential;d:sequential;e:sequential;f:sequential,zero;gemm,abcd-aecf-bfde
+contraction_abcd_aecf_fbed,in0:f32;in1:f32;out:f32,a:96;c:84;b:84;e:84;d:84;f:96,zero;gemm,a:sequential;b:sequential;c:sequential;d:sequential;e:sequential;f:sequential,zero;gemm,abcd-aecf-fbed
+contraction_abcd_aedf_bfce,in0:f32;in1:f32;out:f32,a:96;c:84;b:96;e:84;d:84;f:84,zero;gemm,a:sequential;b:sequential;c:sequential;d:sequential;e:sequential;f:sequential,zero;gemm,abcd-aedf-bfce
+contraction_abcd_aedf_fbec,in0:f32;in1:f32;out:f32,a:96;c:84;b:84;e:84;d:84;f:96,zero;gemm,a:sequential;b:sequential;c:sequential;d:sequential;e:sequential;f:sequential,zero;gemm,abcd-aedf-fbec
+contraction_abcd_aefb_fdce,in0:f32;in1:f32;out:f32,a:96;c:84;b:84;e:84;d:84;f:96,zero;gemm,a:sequential;b:sequential;c:sequential;d:sequential;e:sequential;f:sequential,zero;gemm,abcd-aefb-fdce
+contraction_abcd_aefc_fbed,in0:f32;in1:f32;out:f32,a:96;c:84;b:84;e:84;d:84;f:96,zero;gemm,a:sequential;b:sequential;c:sequential;d:sequential;e:sequential;f:sequential,zero;gemm,abcd-aefc-fbed
+contraction_ab_ac_cb,in0:f32;in1:f32;out:f32,a:7248;c:7248;b:7240,zero;gemm,a:sequential;b:sequential;c:sequential,zero;gemm,ab-ac-cb

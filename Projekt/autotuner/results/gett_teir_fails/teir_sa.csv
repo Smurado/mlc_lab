@@ -1,0 +1,4 @@
+name,gflops,status,seconds,timestamp
+contraction_abcde_efbad_cf,30.8150,partial-timeout,1801.1,2026-08-03 10:56:01
+contraction_abcde_ecbfa_fd,32.6068,partial-timeout,1800.1,2026-08-03 11:26:01
+contraction_abcde_efcad_bf,21.1068,partial-timeout,1801.2,2026-08-03 11:56:02

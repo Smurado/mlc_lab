@@ -1,0 +1,117 @@
+====================================================================================
+TRIAL-BUDGET-SONDIERUNG   36 Laeufe (0 bereits vorhanden, 36 offen)
+  100 Trials | Strategien ['sa', 'ga', 'random'] | Seeds [1, 2, 3]
+  Cost-Filter 0.3 | Warmstart: SA=1 Random=0 | adaptiver Block
+====================================================================================
+
+[1/36] contraction_abc_dca_bd | sa | seed 1 (4 Achsen, Iter=1,330,642,944)  ... START (gesamt 0m00s)
+      -> 27/100 Trials  [ABGEBROCHEN] | Endwert 16.15 GFLOPS | 95 % ab Trial 6 | letzte Verbesserung Trial 6 | 318s (11.78s/Trial)
+
+[2/36] contraction_abc_dca_bd | sa | seed 2 (4 Achsen, Iter=1,330,642,944)  ... START (gesamt 5m17s)
+      -> 19/100 Trials  [ABGEBROCHEN] | Endwert 19.34 GFLOPS | 95 % ab Trial 4 | letzte Verbesserung Trial 4 | 600s (31.58s/Trial)
+
+[3/36] contraction_abc_dca_bd | sa | seed 3 (4 Achsen, Iter=1,330,642,944)  ... START (gesamt 15m17s)
+      -> 16/100 Trials  [ABGEBROCHEN] | Endwert 17.97 GFLOPS | 95 % ab Trial 14 | letzte Verbesserung Trial 14 | 600s (37.50s/Trial)
+
+[4/36] contraction_abc_dca_bd | ga | seed 1 (4 Achsen, Iter=1,330,642,944)  ... START (gesamt 25m18s)
+      -> 8/100 Trials  [ABGEBROCHEN] | Endwert 18.56 GFLOPS | 95 % ab Trial 8 | letzte Verbesserung Trial 8 | 600s (75.00s/Trial)
+
+[5/36] contraction_abc_dca_bd | ga | seed 2 (4 Achsen, Iter=1,330,642,944)  ... START (gesamt 35m18s)
+      -> 6/100 Trials  [ABGEBROCHEN] | Endwert 4.56 GFLOPS | 95 % ab Trial 6 | letzte Verbesserung Trial 6 | 600s (100.00s/Trial)
+
+[6/36] contraction_abc_dca_bd | ga | seed 3 (4 Achsen, Iter=1,330,642,944)  ... START (gesamt 45m18s)
+      -> 13/100 Trials  [ABGEBROCHEN] | Endwert 19.74 GFLOPS | 95 % ab Trial 7 | letzte Verbesserung Trial 7 | 600s (46.15s/Trial)
+
+[7/36] contraction_abc_dca_bd | random | seed 1 (4 Achsen, Iter=1,330,642,944)  ... START (gesamt 55m18s)
+      -> 8/100 Trials  [ABGEBROCHEN] | Endwert 18.29 GFLOPS | 95 % ab Trial 8 | letzte Verbesserung Trial 8 | 600s (75.00s/Trial)
+
+[8/36] contraction_abc_dca_bd | random | seed 2 (4 Achsen, Iter=1,330,642,944)  ... START (gesamt 1h05m)
+      -> 8/100 Trials  [ABGEBROCHEN] | Endwert 19.56 GFLOPS | 95 % ab Trial 2 | letzte Verbesserung Trial 2 | 600s (75.00s/Trial)
+
+[9/36] contraction_abc_dca_bd | random | seed 3 (4 Achsen, Iter=1,330,642,944)  ... START (gesamt 1h15m)
+      -> 18/100 Trials  [ABGEBROCHEN] | Endwert 18.55 GFLOPS | 95 % ab Trial 7 | letzte Verbesserung Trial 7 | 600s (33.33s/Trial)
+
+[10/36] contraction_abcd_deca_be | sa | seed 1 (5 Achsen, Iter=1,560,674,304)  ... START (gesamt 1h25m)
+      -> 12/100 Trials  [ABGEBROCHEN] | Endwert 50.54 GFLOPS | 95 % ab Trial 10 | letzte Verbesserung Trial 10 | 600s (50.00s/Trial)
+
+[11/36] contraction_abcd_deca_be | sa | seed 2 (5 Achsen, Iter=1,560,674,304)  ... START (gesamt 1h35m)
+      -> 4/100 Trials  [ABGEBROCHEN] | Endwert 5.68 GFLOPS | 95 % ab Trial 2 | letzte Verbesserung Trial 2 | 600s (150.01s/Trial)
+
+[12/36] contraction_abcd_deca_be | sa | seed 3 (5 Achsen, Iter=1,560,674,304)  ... START (gesamt 1h45m)
+      -> 6/100 Trials  [ABGEBROCHEN] | Endwert 5.81 GFLOPS | 95 % ab Trial 3 | letzte Verbesserung Trial 3 | 600s (100.00s/Trial)
+
+[13/36] contraction_abcd_deca_be | ga | seed 1 (5 Achsen, Iter=1,560,674,304)  ... START (gesamt 1h55m)
+      -> 7/100 Trials  [ABGEBROCHEN] | Endwert 7.27 GFLOPS | 95 % ab Trial 6 | letzte Verbesserung Trial 6 | 600s (85.71s/Trial)
+
+[14/36] contraction_abcd_deca_be | ga | seed 2 (5 Achsen, Iter=1,560,674,304)  ... START (gesamt 2h05m)
+      -> 4/100 Trials  [ABGEBROCHEN] | Endwert 5.80 GFLOPS | 95 % ab Trial 1 | letzte Verbesserung Trial 2 | 600s (150.00s/Trial)
+
+[15/36] contraction_abcd_deca_be | ga | seed 3 (5 Achsen, Iter=1,560,674,304)  ... START (gesamt 2h15m)
+      -> 13/100 Trials  [ABGEBROCHEN] | Endwert 43.65 GFLOPS | 95 % ab Trial 5 | letzte Verbesserung Trial 5 | 600s (46.15s/Trial)
+
+[16/36] contraction_abcd_deca_be | random | seed 1 (5 Achsen, Iter=1,560,674,304)  ... START (gesamt 2h25m)
+      -> 2/100 Trials  [ABGEBROCHEN] | Endwert 60.36 GFLOPS | 95 % ab Trial 2 | letzte Verbesserung Trial 2 | 600s (300.00s/Trial)
+
+[17/36] contraction_abcd_deca_be | random | seed 2 (5 Achsen, Iter=1,560,674,304)  ... START (gesamt 2h35m)
+      -> 4/100 Trials  [ABGEBROCHEN] | Endwert 56.94 GFLOPS | 95 % ab Trial 4 | letzte Verbesserung Trial 4 | 600s (150.00s/Trial)
+
+[18/36] contraction_abcd_deca_be | random | seed 3 (5 Achsen, Iter=1,560,674,304)  ... START (gesamt 2h45m)
+      -> 2/100 Trials  [ABGEBROCHEN] | Endwert 30.18 GFLOPS | 95 % ab Trial 2 | letzte Verbesserung Trial 2 | 600s (300.00s/Trial)
+
+[19/36] contraction_abcde_efbad_cf | sa | seed 1 (6 Achsen, Iter=2,579,890,176)  ... START (gesamt 2h55m)
+      -> 18/100 Trials  [ABGEBROCHEN] | Endwert 0.00 GFLOPS | 95 % ab Trial None | letzte Verbesserung Trial 1 | 600s (33.33s/Trial)
+
+[20/36] contraction_abcde_efbad_cf | sa | seed 2 (6 Achsen, Iter=2,579,890,176)  ... START (gesamt 3h05m)
+      -> 18/100 Trials  [ABGEBROCHEN] | Endwert 0.00 GFLOPS | 95 % ab Trial None | letzte Verbesserung Trial 1 | 600s (33.34s/Trial)
+
+[21/36] contraction_abcde_efbad_cf | sa | seed 3 (6 Achsen, Iter=2,579,890,176)  ... START (gesamt 3h15m)
+      -> 18/100 Trials  [ABGEBROCHEN] | Endwert 0.00 GFLOPS | 95 % ab Trial None | letzte Verbesserung Trial 1 | 600s (33.33s/Trial)
+
+[22/36] contraction_abcde_efbad_cf | ga | seed 1 (6 Achsen, Iter=2,579,890,176)  ... START (gesamt 3h25m)
+      -> 84/100 Trials  [ABGEBROCHEN] | Endwert 0.00 GFLOPS | 95 % ab Trial None | letzte Verbesserung Trial 1 | 33s (0.40s/Trial)
+
+[23/36] contraction_abcde_efbad_cf | ga | seed 2 (6 Achsen, Iter=2,579,890,176)  ... START (gesamt 3h25m)
+      -> 84/100 Trials  [ABGEBROCHEN] | Endwert 0.00 GFLOPS | 95 % ab Trial None | letzte Verbesserung Trial 1 | 33s (0.39s/Trial)
+
+[24/36] contraction_abcde_efbad_cf | ga | seed 3 (6 Achsen, Iter=2,579,890,176)  ... START (gesamt 3h26m)
+      -> 84/100 Trials  [ABGEBROCHEN] | Endwert 0.00 GFLOPS | 95 % ab Trial None | letzte Verbesserung Trial 1 | 34s (0.41s/Trial)
+
+[25/36] contraction_abcde_efbad_cf | random | seed 1 (6 Achsen, Iter=2,579,890,176)  ... START (gesamt 3h26m)
+      -> 100/100 Trials | Endwert 0.00 GFLOPS | 95 % ab Trial None | letzte Verbesserung Trial 1 | 38s (0.38s/Trial)
+
+[26/36] contraction_abcde_efbad_cf | random | seed 2 (6 Achsen, Iter=2,579,890,176)  ... START (gesamt 3h27m)
+      -> 100/100 Trials | Endwert 0.00 GFLOPS | 95 % ab Trial None | letzte Verbesserung Trial 1 | 39s (0.39s/Trial)
+
+[27/36] contraction_abcde_efbad_cf | random | seed 3 (6 Achsen, Iter=2,579,890,176)  ... START (gesamt 3h28m)
+      -> 100/100 Trials | Endwert 0.00 GFLOPS | 95 % ab Trial None | letzte Verbesserung Trial 1 | 40s (0.40s/Trial)
+
+[28/36] contraction_abcdef_dega_gfbc | sa | seed 1 (7 Achsen, Iter=2,211,840,000)  ... START (gesamt 3h28m)
+      -> 15/100 Trials  [ABGEBROCHEN] | Endwert 62.41 GFLOPS | 95 % ab Trial 1 | letzte Verbesserung Trial 1 | 600s (40.00s/Trial)
+
+[29/36] contraction_abcdef_dega_gfbc | sa | seed 2 (7 Achsen, Iter=2,211,840,000)  ... START (gesamt 3h38m)
+      -> 26/100 Trials  [ABGEBROCHEN] | Endwert 167.54 GFLOPS | 95 % ab Trial 6 | letzte Verbesserung Trial 6 | 438s (16.83s/Trial)
+
+[30/36] contraction_abcdef_dega_gfbc | sa | seed 3 (7 Achsen, Iter=2,211,840,000)  ... START (gesamt 3h46m)
+      -> 14/100 Trials  [ABGEBROCHEN] | Endwert 165.86 GFLOPS | 95 % ab Trial 12 | letzte Verbesserung Trial 13 | 600s (42.86s/Trial)
+
+[31/36] contraction_abcdef_dega_gfbc | ga | seed 1 (7 Achsen, Iter=2,211,840,000)  ... START (gesamt 3h56m)
+      -> 5/100 Trials  [ABGEBROCHEN] | Endwert 68.73 GFLOPS | 95 % ab Trial 1 | letzte Verbesserung Trial 1 | 600s (120.01s/Trial)
+
+[32/36] contraction_abcdef_dega_gfbc | ga | seed 2 (7 Achsen, Iter=2,211,840,000)  ... START (gesamt 4h06m)
+      -> 9/100 Trials  [ABGEBROCHEN] | Endwert 68.93 GFLOPS | 95 % ab Trial 1 | letzte Verbesserung Trial 1 | 600s (66.67s/Trial)
+
+[33/36] contraction_abcdef_dega_gfbc | ga | seed 3 (7 Achsen, Iter=2,211,840,000)  ... START (gesamt 4h16m)
+      -> 15/100 Trials  [ABGEBROCHEN] | Endwert 68.74 GFLOPS | 95 % ab Trial 1 | letzte Verbesserung Trial 1 | 600s (40.00s/Trial)
+
+[34/36] contraction_abcdef_dega_gfbc | random | seed 1 (7 Achsen, Iter=2,211,840,000)  ... START (gesamt 4h26m)
+      -> 5/100 Trials  [ABGEBROCHEN] | Endwert 207.55 GFLOPS | 95 % ab Trial 2 | letzte Verbesserung Trial 2 | 600s (120.00s/Trial)
+
+[35/36] contraction_abcdef_dega_gfbc | random | seed 2 (7 Achsen, Iter=2,211,840,000)  ... START (gesamt 4h36m)
+      -> 3/100 Trials  [ABGEBROCHEN] | Endwert 47.24 GFLOPS | 95 % ab Trial 1 | letzte Verbesserung Trial 1 | 600s (200.00s/Trial)
+
+[36/36] contraction_abcdef_dega_gfbc | random | seed 3 (7 Achsen, Iter=2,211,840,000)  ... START (gesamt 4h46m)
+      -> 26/100 Trials  [ABGEBROCHEN] | Endwert 105.73 GFLOPS | 95 % ab Trial 17 | letzte Verbesserung Trial 17 | 600s (23.08s/Trial)
+
+Messungen fertig nach 4h56m. Schreibe Auswertung ...
+  -> /Users/justin/Developer/Repositories/mlc_lab/Projekt/autotuner/results/trial_budget/curves.json
+  -> /Users/justin/Developer/Repositories/mlc_lab/Projekt/autotuner/results/trial_budget/REPORT.md

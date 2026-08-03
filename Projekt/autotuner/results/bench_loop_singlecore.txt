@@ -1,0 +1,76 @@
+====================================================================================
+KONTROLLVERSUCH EIN KERN (OMP_NUM_THREADS=1)   40 Laeufe
+  abc-bda-dc, Groessen [32, 64, 96, 160], 5 Wiederholungen je Modus
+  TEIR_NO_AUTOTUNE=1 -> identischer Kernel, nur die Messschleife variiert
+====================================================================================
+
+--- Groesse 32 ------------------------------------------------------------
+  [1/40] alt (Block 64)  #1:    32.853 GFLOPS   Kernel     0.06383 ms   Lauf     0.7s
+  [2/40] alt (Block 64)  #2:    32.900 GFLOPS   Kernel     0.06374 ms   Lauf     0.5s
+  [3/40] alt (Block 64)  #3:    33.516 GFLOPS   Kernel     0.06257 ms   Lauf     0.5s
+  [4/40] alt (Block 64)  #4:    33.112 GFLOPS   Kernel     0.06334 ms   Lauf     0.5s
+  [5/40] alt (Block 64)  #5:    32.401 GFLOPS   Kernel     0.06472 ms   Lauf     0.5s
+  [6/40] adaptiv         #1:    32.983 GFLOPS   Kernel     0.06358 ms   Lauf     0.5s
+  [7/40] adaptiv         #2:    32.162 GFLOPS   Kernel     0.06521 ms   Lauf     0.5s
+  [8/40] adaptiv         #3:    33.143 GFLOPS   Kernel     0.06328 ms   Lauf     0.5s
+  [9/40] adaptiv         #4:    31.875 GFLOPS   Kernel     0.06579 ms   Lauf     0.5s
+  [10/40] adaptiv         #5:    32.692 GFLOPS   Kernel     0.06415 ms   Lauf     0.5s
+  => alt        32.956 GFLOPS  (Spanne 32.401-33.516)  Lauf    0.6s
+  => adaptiv    32.571 GFLOPS  (Spanne 31.875-33.143)  Lauf    0.5s
+  => Kernelzeit ~0.0636 ms   DELTA  -1.17 %   Spannen ueberlappen: JA (= Rauschen)   Messung x1.1 schneller
+
+--- Groesse 64 ------------------------------------------------------------
+  [11/40] alt (Block 64)  #1:     5.935 GFLOPS   Kernel     5.65343 ms   Lauf     2.3s
+  [12/40] alt (Block 64)  #2:     5.882 GFLOPS   Kernel     5.70429 ms   Lauf     2.2s
+  [13/40] alt (Block 64)  #3:     5.863 GFLOPS   Kernel     5.72277 ms   Lauf     2.2s
+  [14/40] alt (Block 64)  #4:     5.858 GFLOPS   Kernel     5.72789 ms   Lauf     2.2s
+  [15/40] alt (Block 64)  #5:     5.923 GFLOPS   Kernel     5.66507 ms   Lauf     2.2s
+  [16/40] adaptiv         #1:     5.949 GFLOPS   Kernel     5.64036 ms   Lauf     0.6s
+  [17/40] adaptiv         #2:     5.921 GFLOPS   Kernel     5.66661 ms   Lauf     0.6s
+  [18/40] adaptiv         #3:     5.963 GFLOPS   Kernel     5.62714 ms   Lauf     0.6s
+  [19/40] adaptiv         #4:     5.968 GFLOPS   Kernel     5.62275 ms   Lauf     0.6s
+  [20/40] adaptiv         #5:     5.890 GFLOPS   Kernel     5.69664 ms   Lauf     0.7s
+  => alt         5.892 GFLOPS  (Spanne 5.858-5.935)  Lauf    2.2s
+  => adaptiv     5.938 GFLOPS  (Spanne 5.890-5.968)  Lauf    0.6s
+  => Kernelzeit ~5.6947 ms   DELTA  +0.78 %   Spannen ueberlappen: JA (= Rauschen)   Messung x3.5 schneller
+
+--- Groesse 96 ------------------------------------------------------------
+  [21/40] alt (Block 64)  #1:     4.804 GFLOPS   Kernel    35.35750 ms   Lauf    12.7s
+  [22/40] alt (Block 64)  #2:     4.848 GFLOPS   Kernel    35.03680 ms   Lauf    12.2s
+  [23/40] alt (Block 64)  #3:     4.860 GFLOPS   Kernel    34.95370 ms   Lauf    12.2s
+  [24/40] alt (Block 64)  #4:     4.861 GFLOPS   Kernel    34.94360 ms   Lauf    12.2s
+  [25/40] alt (Block 64)  #5:     4.866 GFLOPS   Kernel    34.90680 ms   Lauf    12.2s
+  [26/40] adaptiv         #1:     4.932 GFLOPS   Kernel    34.44050 ms   Lauf     1.3s
+  [27/40] adaptiv         #2:     4.937 GFLOPS   Kernel    34.40420 ms   Lauf     1.3s
+  [28/40] adaptiv         #3:     4.938 GFLOPS   Kernel    34.40160 ms   Lauf     1.3s
+  [29/40] adaptiv         #4:     4.932 GFLOPS   Kernel    34.44530 ms   Lauf     1.3s
+  [30/40] adaptiv         #5:     4.917 GFLOPS   Kernel    34.54900 ms   Lauf     1.3s
+  => alt         4.848 GFLOPS  (Spanne 4.804-4.866)  Lauf   12.3s
+  => adaptiv     4.931 GFLOPS  (Spanne 4.917-4.938)  Lauf    1.3s
+  => Kernelzeit ~35.0397 ms   DELTA  +1.72 %   Spannen ueberlappen: NEIN   Messung x9.5 schneller
+
+--- Groesse 160 ------------------------------------------------------------
+  [31/40] alt (Block 64)  #1:     4.110 GFLOPS   Kernel   318.91700 ms   Lauf   103.4s
+  [32/40] alt (Block 64)  #2:     4.050 GFLOPS   Kernel   323.64800 ms   Lauf   104.6s
+  [33/40] alt (Block 64)  #3:     4.019 GFLOPS   Kernel   326.14400 ms   Lauf   105.3s
+  [34/40] alt (Block 64)  #4:     3.994 GFLOPS   Kernel   328.14200 ms   Lauf   105.9s
+  [35/40] alt (Block 64)  #5:     3.936 GFLOPS   Kernel   333.03800 ms   Lauf   108.5s
+  [36/40] adaptiv         #1:     3.954 GFLOPS   Kernel   331.50500 ms   Lauf     2.4s
+  [37/40] adaptiv         #2:     3.909 GFLOPS   Kernel   335.31100 ms   Lauf     2.3s
+  [38/40] adaptiv         #3:     3.936 GFLOPS   Kernel   333.01900 ms   Lauf     2.2s
+  [39/40] adaptiv         #4:     3.921 GFLOPS   Kernel   334.24200 ms   Lauf     2.3s
+  [40/40] adaptiv         #5:     3.932 GFLOPS   Kernel   333.32100 ms   Lauf     2.3s
+  => alt         4.022 GFLOPS  (Spanne 3.936-4.110)  Lauf  105.6s
+  => adaptiv     3.930 GFLOPS  (Spanne 3.909-3.954)  Lauf    2.3s
+  => Kernelzeit ~325.9778 ms   DELTA  -2.27 %   Spannen ueberlappen: JA (= Rauschen)   Messung x46.3 schneller
+
+====================================================================================
+ZUSAMMENFASSUNG (ein Kern)
+====================================================================================
+ Groesse   Kernel ms  alt GFLOPS    adaptiv   Delta %  Rauschen?  Lauf alt  Lauf neu
+      32     0.06364      32.956     32.571     -1.17         ja      0.6s      0.5s
+      64     5.69469       5.892      5.938     +0.78         ja      2.2s      0.6s
+      96    35.03968       4.848      4.931     +1.72       NEIN     12.3s      1.3s
+     160   325.97780       4.022      3.930     -2.27         ja    105.6s      2.3s
+
+Gesamtdauer: 627s
