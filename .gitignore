@@ -103,3 +103,7 @@ HANDOFF-*.md
 # Laufzeit-Marker der Messlaeufe (die Ergebnis-CSVs daneben bleiben ERHALTEN)
 Projekt/autotuner/results/**/_worker.out
 Projekt/autotuner/results/**/_current.txt
+
+# Arbeitsanweisungen und interne Feedback-Aufarbeitung (keine Abgabe)
+CLAUDE.md
+feedback/
