@@ -2,7 +2,7 @@
 // gegen eine naive Referenz, danach die grossen Benchmarks.
 #include "include/teir.h"
 #include "include/teir_parser.h"
-#include "include/teir_compiler.h"
+#include "include/teir_runtime.h"
 
 #include <algorithm>
 #include <chrono>
@@ -20,7 +20,7 @@ struct BenchmarkResult {
     double median_ms;
 };
 
-static BenchmarkResult benchmark_kernel(TEIRKernelPtr kernel, void** args, int iterations,
+static BenchmarkResult benchmark_kernel(TEIRRuntime::Kernel kernel, void** args, int iterations,
                                        const std::function<void()>& reset) {
     if (!kernel || iterations <= 0) return {0.0, 0.0, 0.0};
 
@@ -126,8 +126,8 @@ static bool compare_buffers(const std::vector<float>& got, const std::vector<flo
 // All-Einsen-Benchmarktest nicht sieht.
 static bool correctness_matmul_small() {
     TEIRProgram prog = load_teir("data/matmul_small.teir");
-    TEIRCompiler compiler(prog);
-    TEIRKernelPtr kernel = compiler.compile();
+    TEIRRuntime compiler(prog);
+    TEIRRuntime::Kernel kernel = compiler.build();
     if (!kernel) { std::cout << "   [correctness matmul_small] compile failed\n"; return false; }
 
     constexpr int M = 64, N = 64, K = 64;
@@ -158,8 +158,8 @@ static bool correctness_matmul_small() {
 // aeussere parallel-Achse korrekt vor das Zero+Gemm-Paar gezogen wird.
 static bool correctness_contraction_small() {
     TEIRProgram prog = load_teir("data/contraction_small.teir");
-    TEIRCompiler compiler(prog);
-    TEIRKernelPtr kernel = compiler.compile();
+    TEIRRuntime compiler(prog);
+    TEIRRuntime::Kernel kernel = compiler.build();
     if (!kernel) { std::cout << "   [correctness contraction_small] compile failed\n"; return false; }
 
     constexpr int B = 8, M = 32, N = 32, K = 32;
@@ -224,7 +224,7 @@ int main(int argc, char** argv) {
     }
 
     // flops_per_call > 0 => GFLOPS; sonst falls bytes_per_call > 0 => GB/s.
-    auto report = [&](const std::string& name, TEIRKernelPtr kernel, void** args, int iterations,
+    auto report = [&](const std::string& name, TEIRRuntime::Kernel kernel, void** args, int iterations,
                       const std::function<void()>& reset, double flops_per_call, double bytes_per_call) {
         BenchmarkResult result = benchmark_kernel(kernel, args, iterations, reset);
         std::cout << " -> Benchmark [" << name << "] (threads=" << omp_get_max_threads() << "): avg "
@@ -244,7 +244,7 @@ int main(int argc, char** argv) {
         std::cout << "  [" << iterations << " runs]\n";
     };
 
-    auto run_benchmark = [&](const std::string& name, TEIRKernelPtr kernel, void** args,
+    auto run_benchmark = [&](const std::string& name, TEIRRuntime::Kernel kernel, void** args,
                              const std::function<void()>& reset, int iterations,
                              double flops_per_call, double bytes_per_call) {
         if (!kernel) return;
@@ -262,8 +262,8 @@ int main(int argc, char** argv) {
     if (run_bench) {
     // --- Test 1: Transposition ---
     TEIRProgram trans_prog = load_teir("data/transposition.teir");
-    TEIRCompiler compiler_trans(trans_prog);
-    TEIRKernelPtr trans_kernel = compiler_trans.compile();
+    TEIRRuntime compiler_trans(trans_prog);
+    TEIRRuntime::Kernel trans_kernel = compiler_trans.build();
     constexpr float TRANS_FILL = 1.23f;
     std::vector<float> input_tensor(96LL * 128 * 48 * 32, TRANS_FILL);
     std::vector<float> output_tensor(32LL * 128 * 96 * 48, 0.0f);
@@ -283,8 +283,8 @@ int main(int argc, char** argv) {
 
     // --- Test 2: Matmul ---
     TEIRProgram matmul_prog = load_teir("data/matmul.teir");
-    TEIRCompiler compiler_matmul(matmul_prog);
-    TEIRKernelPtr matmul_kernel = compiler_matmul.compile();
+    TEIRRuntime compiler_matmul(matmul_prog);
+    TEIRRuntime::Kernel matmul_kernel = compiler_matmul.build();
     std::vector<float> in0_tensor_mm(256LL * 32 * 16 * 512, 1.0f);
     std::vector<float> in1_tensor_mm(16LL * 512 * 128 * 64, 1.0f);
     std::vector<float> out_tensor_mm(256LL * 32 * 128 * 64, 0.0f);
@@ -305,8 +305,8 @@ int main(int argc, char** argv) {
 
     // --- Test 3: Contraction ---
     TEIRProgram contraction_prog = load_teir("data/contraction.teir");
-    TEIRCompiler compiler_contract(contraction_prog);
-    TEIRKernelPtr contract_kernel = compiler_contract.compile();
+    TEIRRuntime compiler_contract(contraction_prog);
+    TEIRRuntime::Kernel contract_kernel = compiler_contract.build();
     if (contract_kernel) {
         std::cout << " -> Compilation Successful: Contraction Kernel Pointer Ready.\n";
         std::vector<float> in0_tensor_co(128LL * 96 * 32 * 256, 1.0f);

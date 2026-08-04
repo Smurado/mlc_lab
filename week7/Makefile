@@ -9,8 +9,10 @@ LDFLAGS     := -L$(BREW_PREFIX)/opt/libomp/lib -lomp -ldl
 
 # Target configurations
 TARGET := teir_runtime
-SRCS   := main.cpp teir_parser.cpp teir_compiler.cpp
-OBJS   := $(SRCS:.cpp=.o)
+SRCS   := main.cpp teir_parser.cpp teir_runtime.cpp ../week6/Unary.cpp ../week6/Gemm.cpp
+OBJS   := $(notdir $(SRCS:.cpp=.o))
+
+vpath %.cpp . ../week6
 
 .PHONY: all clean run test bench
 
