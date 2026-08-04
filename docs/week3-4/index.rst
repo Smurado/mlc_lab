@@ -22,30 +22,39 @@ Für die Basis haben wir einfache unäre Operationen für 16x16 Matrizen geschri
 **Messwerte**
 
 Gemessen wird in GiB/s, weil diese Operationen durch den Speicher beziehungsweise den
-L1-Cache begrenzt sind und nicht durch die Rechenwerke.
+L1-Cache begrenzt sind und nicht durch die Rechenwerke. Angegeben ist der Median aus
+15 Läufen.
 
 .. list-table::
    :header-rows: 1
-   :widths: 35 30 35
+   :widths: 28 22 25 25
 
    * - Funktion
-     - Durchsatz
-     - Mittlere Zeit
+     - Median
+     - Min bis Max
+     - Spannweite
    * - ``identity_16_16``
-     - 128,47 GiB/s
-     - 0,01 µs
+     - 109,4 GiB/s
+     - 83,0 bis 127,5
+     - 40,7 %
    * - ``zero_16_16``
-     - 63,32 GiB/s
-     - 0,02 µs
+     - 53,6 GiB/s
+     - 48,2 bis 63,8
+     - 29,1 %
    * - ``relu_16_16``
-     - 87,15 GiB/s
-     - 0,02 µs
+     - 108,8 GiB/s
+     - 59,3 bis 151,8
+     - 84,9 %
+
+**Diese Werte sind nicht belastbar.** Eine 16x16-Matrix umfasst 1 KiB; der Kernel ist nach
+wenigen Mikrosekunden fertig. Gemessen wird damit überwiegend der Aufwand für Aufruf und
+Zeitnahme, nicht die Bandbreite. Bei ``relu_16_16`` liegt der größte gemessene Wert um den
+Faktor 2,6 über dem kleinsten. Die Zahlen taugen als Größenordnung, ein Vergleich der drei
+Operationen untereinander lässt sich daraus nicht ableiten. Belastbare Bandbreiten für
+dieselben Kernel bei größeren Matrizen stehen im Bericht zu Woche 6.
 
 **Beobachtungen**
 
-- Die Durchsätze liegen zwischen 63 und 128 GiB/s. ``identity_16_16`` erreicht den höchsten
-  Wert, ``zero_16_16`` mit 63,32 GiB/s etwa die Hälfte davon. ``zero`` schreibt nur, während
-  ``identity`` zusätzlich liest und die Messung beide Richtungen zählt.
 - Der Weg über das ZA-Tile vermeidet einzelne Scatter-Stores. Das ist nicht nur schneller,
   sondern umgeht auch Ausrichtungsfehler, die sonst zu SIGILL führen können.
 
@@ -86,30 +95,46 @@ Für den GFLOPS-Wert haben wir 2 FLOPs (Multiply + Add) pro Schleifendurchlauf a
 
 .. list-table::
    :header-rows: 1
-   :widths: 35 20 45
+   :widths: 30 18 18 34
 
    * - Kernel
-     - GFLOPS
+     - Median
+     - Spannweite
      - Anmerkung
    * - gemm_32_32_1
-     - 6,09
-     - ein einzelnes Rank-1-Update, die Laufzeit besteht überwiegend aus dem Auf- und Abbau des SME-Zustands
+     - 21,9
+     - 75,4 %
+     - ein einzelnes Rank-1-Update, Laufzeit im Mikrosekundenbereich
    * - gemm_32_32_512 (K-Loop)
-     - 1658,48
+     - 1653,5
+     - 4,7 %
      - Arbeitssatz liegt im Cache
    * - gemm_512_32_512 (M-Loop)
-     - 1652,05
-     - 0,4 Prozent unter dem K-Loop
+     - 1657,5
+     - 8,4 %
+     - im Rahmen der Streuung gleichauf mit dem K-Loop
    * - gemm_512_512_512 (voller N-Loop)
-     - 1625,03
-     - 2,0 Prozent unter dem K-Loop
+     - 1655,2
+     - 6,4 %
+     - im Rahmen der Streuung gleichauf mit dem K-Loop
+
+Median aus 15 Läufen, Spannweite als Maximum minus Minimum bezogen auf den Median.
 
 Der Abstand zwischen ``gemm_32_32_1`` und den übrigen Kerneln zeigt die Kosten der
 Zustandswechsel: Bei 512 K-Iterationen verteilt sich derselbe Aufwand auf 512-mal mehr
-Rechenarbeit, der Durchsatz steigt um den Faktor 272. Von dort bis zur vollen
-512x512x512-Multiplikation fällt der Wert nur noch um 2,0 Prozent, obwohl 256-mal mehr
-Sub-Kernel-Aufrufe stattfinden. Ohne die "Fast"-Varianten aus Abschnitt 4 würde jeder
-dieser Aufrufe einen eigenen Zustandswechsel auslösen.
+Rechenarbeit. Der Durchsatz steigt dabei um rund den Faktor 75. Dieser Wert gibt allerdings
+nur die Größenordnung an, weil ``gemm_32_32_1`` mit 75 Prozent Spannweite selbst kaum
+belastbar messbar ist.
+
+Zwischen den drei großen Kerneln ist kein Unterschied nachweisbar: Sie liegen zwischen
+1653 und 1658 GFLOPS und damit innerhalb ihrer eigenen Streuung von 4,7 bis 8,4 Prozent.
+Die vollständige 512x512x512-Multiplikation kostet also nichts gegenüber dem reinen K-Loop,
+obwohl 256-mal mehr Sub-Kernel-Aufrufe stattfinden. Ohne die "Fast"-Varianten aus Abschnitt 4
+würde jeder dieser Aufrufe einen eigenen Zustandswechsel auslösen.
+
+**Messbedingungen.** Apple M4 Max, Apple clang 21, Flags aus ``week3-4/Makefile``. Je
+Messpunkt 15 Läufe. Die Maschine war nicht vollständig lastfrei; das erklärt einen Teil der
+Spannweite, nicht aber deren Abhängigkeit von der Problemgröße.
 
 6. Build
 --------

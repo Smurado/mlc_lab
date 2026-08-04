@@ -1,0 +1,58 @@
+{
+ "gemm_32_32_1": {
+  "max": 22.88,
+  "median": 21.92,
+  "min": 6.35,
+  "n": 15,
+  "spread_pct": 75.4,
+  "unit": "GFLOPS"
+ },
+ "gemm_32_32_512": {
+  "max": 1677.94,
+  "median": 1653.47,
+  "min": 1600.47,
+  "n": 15,
+  "spread_pct": 4.7,
+  "unit": "GFLOPS"
+ },
+ "gemm_512_32_512": {
+  "max": 1700.03,
+  "median": 1657.49,
+  "min": 1560.85,
+  "n": 15,
+  "spread_pct": 8.4,
+  "unit": "GFLOPS"
+ },
+ "gemm_512_512_512": {
+  "max": 1698.69,
+  "median": 1655.18,
+  "min": 1593.4,
+  "n": 15,
+  "spread_pct": 6.4,
+  "unit": "GFLOPS"
+ },
+ "identity_16_16": {
+  "max": 127.45,
+  "median": 109.35,
+  "min": 82.98,
+  "n": 15,
+  "spread_pct": 40.7,
+  "unit": "GiB/s"
+ },
+ "relu_16_16": {
+  "max": 151.76,
+  "median": 108.83,
+  "min": 59.32,
+  "n": 15,
+  "spread_pct": 84.9,
+  "unit": "GiB/s"
+ },
+ "zero_16_16": {
+  "max": 63.77,
+  "median": 53.6,
+  "min": 48.16,
+  "n": 15,
+  "spread_pct": 29.1,
+  "unit": "GiB/s"
+ }
+}
