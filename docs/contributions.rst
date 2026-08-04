@@ -67,7 +67,7 @@ Week 6
 
 **Teammitglied 1: Justin Bergmann**
 
-* Implementierung der dynamischen ``generate``Funktion für die SME GEMM-Primitive (Unterstützung für variable Parameter M, N, K).
+* Implementierung der dynamischen ``generate``-Funktion für die SME GEMM-Primitive (Unterstützung für variable Parameter M, N, K).
 * Entwicklung und Auswertung der Test- und Benchmarking-Logik über 27 Settings (Ausgabe der Performance in GFLOPS).
 
 **Teammitglied 2: Julian Müller**

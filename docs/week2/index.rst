@@ -76,7 +76,8 @@ Gemessen wurde auf einem Apple Silicon mit M4 Max.
 Die 4S-Variante liefert erwartungsgemäß etwa das **Doppelte** der 2S-Rate:
 beide Varianten sind instruktionsraten-limitiert, 4S bearbeitet aber pro
 Instruktion viermal statt zweimal so viele Lanes. Die skalare Variante liegt
-deutlich darunter, weil pro Instruktion nur eine Lane aktiv ist.
+bei 34,4 GFLOP/s und damit bei rund einem Drittel der 4S-Rate, weil pro Instruktion
+nur eine Lane aktiv ist.
 
 
 3. Permutation :math:`abc \rightarrow cba`
@@ -92,7 +93,9 @@ zusammengefasst. Aus der Form :math:`(A, B, C)` wird :math:`(C, B, A)`.
 
 **Kernel-Idee**
 
-Anstatt einfach drei verschachtelte Schleifen zu nutzen - was beim Schreiben riesige Speichersprünge von :math:`B \cdot A \cdot 4 = 128` Bytes zur Folge hätte und die Cache-Lines ignoriert - haben wir das Ganze blockweise mit NEON umgesetzt.
+Drei verschachtelte Schleifen würden beim Schreiben Sprünge von :math:`B \cdot A \cdot 4 = 128` Bytes
+erzeugen und damit pro Cache-Line nur ein Element nutzen. Wir haben die Permutation deshalb
+blockweise mit NEON umgesetzt.
 
 Wir iterieren außen über ``b`` und bearbeiten das ``c`` in 4er-Schritten. Wir laden für alle 8 ``a``-Zeilen mit ``ld1`` direkt 4 Werte auf einmal in die Register. So erhalten wir zwei 4x4-Blöcke, die wir anschließend mit den Befehlen ``trn1``/``trn2`` und ``zip1``/``zip2`` "umkippen". 
 
@@ -121,10 +124,28 @@ Pseudocode::
 **Korrektheit**
 
 Der TEST_CASE ``[perm_neon_abc_cba]`` prüft jedes einzelne Element gegen die
-Einsum-Formel und durchläuft dabei :math:`|c| \in \{1, 2, 4, 8, 15, 32\}`
-(insgesamt 1984 Assertions). Zusätzlich gibt es einen
-Visualisierungs-Test ``[perm_print]``, der ``abc`` und das permutierte ``cba``
-für ein kleines Beispiel (``A=8, B=4, C=4``) ausdruckt.
+Einsum-Formel und durchläuft dabei :math:`|c| \in \{1, 2, 4, 8, 15, 32\}`.
+Zusätzlich gibt es einen Visualisierungs-Test ``[perm_print]``, der ``abc`` und
+das permutierte ``cba`` für ein kleines Beispiel (``A=8, B=4, C=4``) ausdruckt.
+
+Ein reiner Elementvergleich prüft nur die Stellen, die der Kernel beschreiben soll.
+Schreibt er versehentlich daneben, bleibt das unentdeckt. Der Ausgabepuffer bekommt
+deshalb vorne und hinten je 64 zusätzliche Elemente, die mit ``-12345.0f`` gefüllt
+sind. Nach jedem Aufruf prüfen wir, dass diese Wachbänder unverändert sind:
+
+.. code-block:: cpp
+
+    const int   GUARD       = 64;
+    const float GUARD_VALUE = -12345.0f;
+
+    std::vector<float> buffer(total + 2 * GUARD, GUARD_VALUE);
+    float *cba = buffer.data() + GUARD;
+
+Das ist besonders bei :math:`|c| \bmod 4 \neq 0` relevant, weil dort der skalare
+Tail den Rest kopiert und ein Fehler in der Grenze genau über das Ende hinaus
+schreiben würde.
+
+Insgesamt umfasst die Testsuite 5440 Assertions in 6 Testfällen.
 
 **Bandbreiten-Messung**
 
@@ -198,19 +219,34 @@ immer 3 Warmup-Calls.
      - 73,5 ms
      - 27,2 GiB/s
 
+.. figure:: benchmarks.png
+   :alt: Bandbreite über |c| und Instruktionsdurchsatz
+   :align: center
+   :width: 100%
+
+   Links: Bandbreite der Permutation über :math:`|c|` bei logarithmischer x-Achse. Die
+   gestrichelten Linien markieren, ab welchem :math:`|c|` der Arbeitssatz von
+   :math:`256 \cdot |c|` Byte die jeweilige Cache-Stufe überschreitet. Rechts: Durchsatz
+   der drei gemessenen Instruktionen.
+
 **Interpretation der Ergebnisse**
 
 Wenn wir uns die gemessenen Werte anschauen, sieht man folgendes:
 
-- Für Werte von :math:`|c|` zwischen 128 und 512 erreichen wir die höchste Bandbreite (den Peak) mit knapp **195 GiB/s**. Das liegt daran, dass beide Tensoren hier noch komplett in den extrem schnellen L1-Cache passen (sie sind da nur 32 bis 128 KiB groß). Der Kernel wird in dem Bereich also nur durch den L1-Cache limitiert.
-- Sobald :math:`|c|` größer oder gleich 1024 wird, werden die Daten zu groß für den L1- und irgendwann auch für den L2-Cache. Das sieht man sofort, weil die Bandbreite stark einbricht und auf **30 bis 55 GiB/s** abfällt. Ab hier müssen die Daten aus dem deutlich langsameren Arbeitsspeicher (DRAM) geholt werden, was dann auch den Flaschenhals bildet.
-- Bei kleinen Werten wie :math:`|c| = 4` oder :math:`|c| = 8` ist die reine Ausführung so schnell vorbei, dass der Overhead für den Funktionsaufruf und das Einrichten der Schleife zu stark ins Gewicht fallen. Deswegen erreichen wir da noch nicht den vollen Peak vom L1-Cache.
+- Zwischen :math:`|c| = 128` und :math:`|c| = 512` liegt die Bandbreite bei knapp **195 GiB/s**. Der Arbeitssatz beträgt dort 32 bis 128 KiB. Das Maximum von 195,4 GiB/s fällt mit :math:`|c| = 256` zusammen, also genau der Größe, bei der beide Tensoren zusammen 64 KiB belegen und damit die Grenze des L1-Datencache erreichen.
+- Sobald :math:`|c|` größer oder gleich 1024 wird, werden die Daten zu groß für den L1- und irgendwann auch für den L2-Cache. Die Bandbreite fällt dort auf **30 bis 55 GiB/s**, also auf etwa ein Viertel des Peaks. Ab hier müssen die Daten aus dem Arbeitsspeicher (DRAM) geholt werden, der damit den Flaschenhals bildet.
+- Bei kleinen Werten wie :math:`|c| = 4` oder :math:`|c| = 8` ist die reine Ausführung so schnell vorbei, dass der Aufwand für den Funktionsaufruf und das Einrichten der Schleife im Verhältnis ins Gewicht fällt. Deswegen erreichen wir da noch nicht den vollen Peak vom L1-Cache.
 
 
 4. Unit Tests und Benchmarks mit Catch2
 ----------------------------------------
 Alle Tests und Benchmarks liegen in ``week2/main.cpp`` und sind über Tags
-getrennt aufrufbar:
+getrennt aufrufbar. Gebaut wird über das Makefile im Ordner ``week2``:
+
+.. code-block:: bash
+
+    make          # baut test_run
+    make test     # baut und fuehrt die Korrektheitstests aus
 
 .. code-block:: bash
 

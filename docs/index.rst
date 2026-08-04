@@ -1,4 +1,5 @@
-======================================
+MLC Lab
+=======
 
 Dieses Dokument enthält den Projektbericht für das MLC Lab, inklusive aller notwendigen Dokumentationen und Beiträge der Teammitglieder: Julian und Justin.
 

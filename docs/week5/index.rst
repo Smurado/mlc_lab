@@ -10,7 +10,7 @@ sondern den Maschinencode dynamisch im C++ Programm zu generieren und im Speiche
 Die in Woche3-4 geschriebenen Unary- und GEMM-Kernel wurden dafür in entsprechende Code-Generator-Klassen überführt.
 
 2. Code Generation Basis
-----------------
+------------------------
 
 Um Maschinencode zur Laufzeit auszuführen, muss zunächst geeigneter Speicher bereitgestellt werden. 
 Die Code-Generator-Klasse nutzt dafür ``mmap`` in Kombination mit den Flags ``PROT_READ | PROT_WRITE``. 
@@ -19,7 +19,7 @@ Sobald die hexadezimalen Opcodes in diesen Bereich übertragen wurden, werden di
 als nativer Maschinencode ausführen.
 
 3. Portierung der Kernel
-----------------
+------------------------
 
 Die in den vorherigen Wochen geschriebenen ARM Assembly-Instruktionen wurden 
 in den passenden hexadezimalen Maschinencode umgewandelt.
@@ -31,18 +31,60 @@ in den passenden hexadezimalen Maschinencode umgewandelt.
   übersetzt und in Serie per emit-Funktion geladen.
 
 4. Benchmarks und Fehleranalyse
-----------------
+-------------------------------
 
-Beim Benchmarking in der ``main.cpp`` wurde anfangs ein fehlerhaftes Verhalten beobachtet: Die Ergebnisse zeigten konsequent ``0.00 GiB/s`` und ``nan GFLOPS``. 
+**Symptom.** Das Benchmarking in der ``main.cpp`` lieferte ``0.00 GiB/s`` und ``nan GFLOPS``.
 
-Die Ursache lag in einer Wechselwirkung zwischen dem C++ Compiler und der SME-Hardware: Die Hardware-Instruktion ``smstart sm`` zur Aktivierung des SME-Modus aktiviert nicht nur die Matrix-Features, sondern leert dabei (wie von der ARM Architektur vorgegeben) implizit sämtliche Vector-Register. Dazu gehören auch die "callee-saved" Register ``d8`` bis ``d15``.
-Da wir beim Kompilieren das ``-O3`` Flag genutzt haben, hatte der Host-C++-Compiler die lokalen Variablen für die Laufzeitmessungen direkt in diese Register verlagert. Der anschliessende Reset durch unsere neu generierten Maschinencode-Instruktionen führte beim Errechnen der finalen Metriken schliesslich zu einer Division durch Null.
+**Ursache.** Die Instruktion ``smstart sm`` aktiviert nicht nur die Matrix-Features, sondern
+setzt laut ARM-Architektur alle Vektorregister zurück. Dazu gehören ``d8`` bis ``d15``, die
+nach AAPCS64 vom Aufgerufenen zu sichern sind. Mit ``-O3`` legt der Compiler die lokalen
+Variablen der Zeitmessung genau dort ab. Nach dem Kernel-Aufruf war die gemessene Zeitdifferenz
+0, die Division dadurch undefiniert.
 
-Zur Lösung wurden die relevanten Benchmark-Funktionen mit ``__attribute__((optimize("O0")))`` dekoriert. Somit sichert der Compiler die zeitkritischen Variablen im Arbeitsspeicher/Stack ab, was ein fehlerhaftes Überschreiben durch den Hardware-Reset verhindert.
+**Änderung.** Der generierte Kernel sichert ``d8`` bis ``d15`` selbst, wie es die
+Aufrufkonvention verlangt. Prolog und Epilog werden vom Generator mit ausgegeben:
 
-Ausserdem wurde die Messmethodik verfeinert: Die Zeitmessung umfasst jetzt nicht nur eine innere Schleife über viele Ausführungen, sondern zusätzlich einen "Average of 10" (äußere Schleife). Dadurch werden zufällige Rauschfaktoren wie System-Interrupts (OS-Jitter), Thermal Throttling und Cache-Evictions effektiv kompensiert.
+.. code-block:: cpp
 
-5. Lessons Learned
+    emit(0x6DBC27E8);   // stp d8,  d9,  [sp, #-64]!
+    emit(0x6D012FEA);   // stp d10, d11, [sp, #16]
+    emit(0x6D0237EC);   // stp d12, d13, [sp, #32]
+    emit(0x6D033FEE);   // stp d14, d15, [sp, #48]
+    // ... Kernel ...
+    emit(0x6CC427E8);   // ldp d8,  d9,  [sp], #64
+
+Damit liegt die Verantwortung dort, wo die Aufrufkonvention sie vorsieht, und der Aufrufer
+braucht keine Sonderbehandlung. Der GEMM-Kernel besteht aus einem festen Instruktionsfeld mit
+bereits berechneten Sprungweiten, das sich nicht ohne Verschieben der Offsets erweitern lässt.
+Er wird deshalb über eine Inline-Assembly-Hülle aufgerufen, die ``d8`` bis ``d15`` als
+zerstört deklariert. Der Compiler sichert die betroffenen Variablen dann von sich aus.
+
+**Nachweis.** Beide Kernel liefern reproduzierbare Werte, und die Benchmark-Funktionen laufen
+mit voller Optimierung. Eine Übersetzung mit ``-O0`` ist nicht mehr nötig.
+
+Die Zeitmessung besteht aus einer inneren Schleife über viele Ausführungen und einem Mittel
+über 10 unabhängige Durchläufe. Das begrenzt den Einfluss von System-Interrupts, Thermal
+Throttling und Cache-Evictions auf das Ergebnis.
+
+5. Unit Tests
+--------------
+
+Die Tests liegen in ``week5/main_test.cpp`` und laufen über ``make test``. Sie prüfen die
+generierten Kernel gegen eine naive C++-Referenz, nicht gegen fest eingetragene Erwartungswerte.
+
+- **Unary**: ``identity``, ``relu`` und ``zero`` über verschiedene Matrixgrößen, jeweils
+  elementweise gegen die Referenz. Geprüft wird zusätzlich mit einer Leading Dimension, die
+  größer als die Matrixbreite ist, damit ein Kernel auffällt, der die Zeilenlänge mit dem
+  Speicherabstand verwechselt.
+- **GEMM**: 512x512x512 gegen eine dreifach verschachtelte Referenzschleife.
+
+Die Eingaben sind gemusterte Werte, keine Konstanten. Eine Füllung mit lauter gleichen Zahlen
+liefert bei vertauschten Indizes dasselbe Ergebnis wie bei richtigen und würde einen
+Layout-Fehler nicht anzeigen.
+
+Insgesamt umfasst die Testsuite 524 347 Assertions in 6 Testfällen.
+
+6. Lessons Learned
 ------------------
 
 Die Lessons Learned sollen dazu genutzt werden, auf Probleme hinzuweisen, die wir bei der Entwicklung der Runtime Code Generation und der Benchmarks hatten.
@@ -50,16 +92,19 @@ Die Lessons Learned sollen dazu genutzt werden, auf Probleme hinzuweisen, die wi
 - **Hardware-State & Calling Conventions:** Ein direkter Sprung auf die native Hardwareebene kann zu unerwarteten Konflikten bei den *Calling Conventions* führen. 
   Man darf sich nicht darauf verlassen, dass Register ihre Werte behalten, wenn man systemnahe Status-Instruktionen (wie ``smstart sm``) ausführt.
 
-- **Code Generation vs Static Compilation:** Sobald man den üblichen Compiler-Pfad zum Teil verlässt und Maschinencode zur Laufzeit injiziert, 
-  greifen die Schutzmechanismen und Register-Allokationen des C++-Compilers nicht mehr für die generierten Blöcke. 
-  Manuelles Eingreifen (wie ``__attribute__((optimize("O0")))``) ist dann unerlässlich.
+- **Code Generation vs Static Compilation:** Sobald Maschinencode zur Laufzeit erzeugt wird,
+  kennt der C++-Compiler dessen Wirkung auf die Register nicht. Der generierte Code muss die
+  Aufrufkonvention deshalb selbst einhalten. Wo das nicht möglich ist, etwa bei einem festen
+  Instruktionsfeld mit berechneten Sprungweiten, muss die Aufrufstelle die betroffenen Register
+  als zerstört deklarieren. Die Optimierung des umgebenden C++-Codes abzuschalten behebt das
+  Symptom, aber nicht die Ursache.
 
 - **Verzerrungen im Benchmarking:** Eine noch so große Anzahl an Loop-Iterationen ist unzureichend, 
   wenn sie fortlaufend (am selben Datenblock) ausgeführt wird und gerade ein L3-Cache-Miss oder ein Kontextwechsel des Betriebssystems passiert. 
   Das Wiederholen in mehreren unabhängigen Blöcken (Avg of 10) ist zwingend nötig für verlässliche GFLOPS/GiB-Werte.
 
-6. Aufgabenverteilung
-----------------
+7. Aufgabenverteilung
+---------------------
 
 Die Umsetzung der fünften Woche wurde im Team folgendermassen bearbeitet:
 
