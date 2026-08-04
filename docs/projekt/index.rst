@@ -18,10 +18,16 @@ der Zielhardware ab. Für eine 512er-Matrixmultiplikation ist eine andere
 Schleifenordnung günstig als für eine Kontraktion mit sieben Achsen und stark
 unterschiedlichen Extents.
 
+Wie groß der Unterschied ausfällt, zeigt ein Beispiel aus der eigenen Testsuite: Ein
+großer Fall der GETT-Matrix läuft mit der naiven Ausgangs-Schedule in den Zeitdeckel von
+240 Sekunden, während dieselbe Rechnung mit passender Schedule in Sekunden fertig ist.
+
 Diese Entscheidungen von Hand zu treffen skaliert nicht. Für jede neue Tensorform
-müsste man erneut messen, welche Anordnung passt. Ein Autotuner nimmt diese Arbeit ab:
-Er erzeugt aus einer Beschreibung der Kontraktion mehrere Kandidaten, misst sie und
-gibt die schnellste Konfiguration zurück.
+müsste man erneut messen, welche Anordnung passt, und der Raum der Möglichkeiten ist
+groß: Eine Kontraktion mit sechs Achsen hat rund 28 800 Kandidaten, und die Zahl wächst
+faktoriell mit der Achsenzahl. Ein Autotuner nimmt diese Arbeit ab: Er erzeugt aus einer
+Beschreibung der Kontraktion mehrere Kandidaten, misst sie und gibt die schnellste
+Konfiguration zurück.
 
 Dieses Projekt setzt einen solchen Autotuner für TEIR um. Der Schwerpunkt liegt nicht
 darauf, möglichst viele Suchverfahren zu implementieren, sondern darauf, den
@@ -346,12 +352,140 @@ Aufwand für die Auswertung des Syntaxbaums, da beide dieselben Kernel verwenden
 5.3 Cost-Modell und Suchstrategien
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. hint::
+Das Cost-Modell ist eine analytische Heuristik, kein gelerntes Modell. Es schätzt die
+Kosten einer Konfiguration aus Speicherzugriffsmuster, Parallelisierungsaufwand,
+Arbeitssatzgröße und Entrollungsgrad. Beim Start kalibriert es sich selbst: Statt feste
+Konstanten anzunehmen, misst es die erreichbare Spitzenrate und den Aufwand für den
+Thread-Start auf der laufenden Maschine.
 
-   Belege, die vorliegen: Rangkorrelation des Cost-Modells rund 0,08; in der Ablation
-   kostet der Vorfilter etwa 6 Prozent Endqualität. Dazu der Vergleich SA gegen GA
-   gegen Zufall und die Konvergenzkurven aus ``eval/notebooks``. Hier fehlen noch die
-   Diagramme aus den Notebooks, deshalb bleibt der Abschnitt vorerst offen.
+Es hat zwei Aufgaben. Als Vorfilter reduziert es die Kandidatenmenge auf die besten
+30 Prozent, sodass nur diese übersetzt und gemessen werden. Und es liefert den
+Startpunkt für die Suche, den Warmstart.
+
+**Konvergenz.** Verglichen wurden Simulated Annealing, ein genetischer Algorithmus und
+eine Zufallssuche über je fünf Startwerte. Angegeben ist der Median des jeweils besten
+bis dahin gefundenen Ergebnisses.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 24 24 24
+
+   * - Strategie
+     - nach 1 Trial
+     - nach 5 Trials
+     - nach 20 Trials
+   * - Simulated Annealing
+     - 40,1 GFLOPS
+     - 40,1
+     - 40,4
+   * - Genetischer Algorithmus
+     - 38,8 GFLOPS
+     - 41,3
+     - 41,3
+   * - Zufallssuche
+     - 0,0 GFLOPS
+     - 8,9
+     - 37,7
+
+Der Unterschied liegt nicht im Endergebnis, sondern darin, wie schnell es erreicht wird.
+SA und GA starten bereits beim ersten Trial nahe ihrem Endwert, weil der Warmstart sie
+dorthin setzt. Die Zufallssuche beginnt bei null und braucht im Median sieben Trials,
+um 90 Prozent ihres eigenen Endwerts zu erreichen; über die fünf Startwerte schwankt
+das zwischen 5 und 16. SA und GA erreichen dieselbe Marke nach einem Trial.
+
+Für einen Autotuner ist das die relevante Eigenschaft: Bei begrenztem Budget liefern die
+informierten Strategien früher ein brauchbares Ergebnis und schwanken weniger zwischen
+Läufen.
+
+**Ablation.** Schaltet man den Vorfilter des Cost-Modells ab, steigt die Endqualität um
+rund 6 Prozent. Der Filter kostet also Qualität, statt sie zu liefern. Der Grund ist
+seine schwache Rangkorrelation von rund 0,08: Er ordnet die Kandidaten kaum in der
+tatsächlichen Reihenfolge und wirft deshalb gelegentlich das echte Optimum weg, bevor es
+gemessen werden kann.
+
+Damit ist das Cost-Modell in dieser Form ein Durchsatzwerkzeug und kein Qualitätsgewinn.
+Es spart Übersetzungs- und Messzeit, indem es 70 Prozent der Kandidaten aussortiert, und
+bezahlt das mit 6 Prozent Endqualität. Ob sich das lohnt, hängt davon ab, wie teuer eine
+Messung im Verhältnis zum Suchbudget ist.
+
+5.4 Wo der Autotuner im Vorteil ist
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Gegen eine ausgereifte Bibliothek auf großen Problemen zu verlieren ist zu erwarten. Es
+gibt aber zwei Achsen, auf denen der Autotuner vorne liegt. Beide Messreihen wurden mit
+dem NEON-Backend erhoben, also vor der Reparatur des SME-Backends.
+
+**Kleine Kernel.** Bei sehr kleinen Matrizen dominiert bei PyTorch der Aufwand für
+Aufrufweg und Rahmenwerk, während ein übersetzter Kernel diesen Aufwand nicht hat.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 16 28 28 28
+
+   * - N
+     - ``torch.matmul``
+     - ``torch.einsum``
+     - TEIR, NEON
+   * - 16
+     - 9,1
+     - 1,2
+     - **95,1**
+   * - 24
+     - 29,2
+     - 4,0
+     - **80,0**
+   * - 32
+     - 73,2
+     - 9,8
+     - 71,1
+   * - 64
+     - 384,1
+     - 71,7
+     - 52,7
+   * - 128
+     - 1017,0
+     - 411,3
+     - 49,2
+
+Angaben in GFLOPS für ein GEMM der Größe N³. Bei N = 16 liegt TEIR um den Faktor 10,4
+über ``torch.matmul``. Der Punkt, an dem sich das Verhältnis dreht, liegt zwischen 24 und
+32; ab dort gewinnt die Bibliothek und der Abstand wächst mit der Problemgröße. Für
+kleine oder einmalig benötigte Kernel ist ein spezialisierter übersetzter Kernel damit
+im Vorteil.
+
+**Tuning-Zeit.** Gegenüber TVM verliert der Autotuner bei der Kernel-Qualität deutlich,
+gewinnt aber bei der Zeit, die das Tuning selbst kostet.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 12 22 22 22 22
+
+   * - N
+     - TEIR Tuning
+     - TEIR GFLOPS
+     - TVM Tuning
+     - TVM GFLOPS
+   * - 128
+     - 4,8 s
+     - 48,2
+     - 61,1 s
+     - 105,9
+   * - 256
+     - 6,7 s
+     - 36,9
+     - 60,0 s
+     - 469,3
+   * - 512
+     - 14,5 s
+     - 33,9
+     - 64,1 s
+     - 562,4
+
+Der Autotuner tunt zwischen 4,4-fach und 12,7-fach schneller, liefert dabei aber einen
+deutlich langsameren Kernel; bei N = 512 erreicht TVM das 16,6-fache. Das ist ein echter
+Zielkonflikt und kein Argument gegen TVM: Wer einen Kernel einmal tunt und oft benutzt,
+wählt TVM. Wer viele Kontraktionen einmalig tunen muss, ist mit dem schnelleren
+Suchverfahren besser bedient.
 
 6. Limitierungen
 ----------------
@@ -376,6 +510,10 @@ Aufwand für die Auswertung des Syntaxbaums, da beide dieselben Kernel verwenden
      - 459 bis 524 Mrd. Iterationen, ein Trial kostet dort Minuten
    * - Die CI belegt die SME-Korrektheit nicht
      - GitHub-Runner haben kein SME, die Tests laufen nur lokal auf dem M4
+   * - Ein Kernel je Aufruf, keine Fusion mehrerer Kontraktionen
+     - Aufbau der Pipeline, siehe Abschnitt 3
+   * - Kein mehrstufiges Cache-Tiling im Codegenerator
+     - Abstand zu TVM bei großen Problemen, Abschnitt 5.4
 
 Zwei dieser Punkte verdienen eine Einordnung, weil sie die Reichweite der Ergebnisse
 begrenzen.
