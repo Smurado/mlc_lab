@@ -101,10 +101,27 @@ jobs:
     strategy:
       fail-fast: false        # eine kaputte Woche verdeckt die anderen nicht
       matrix:
-        week: [week1, week2, week3-4, week5, week6, week7, week8]
+        include:
+          # sme: true = die Tests fuehren SME-Instruktionen aus und brauchen
+          # dafuer einen Apple M4 oder neuer. Gebaut wird ueberall, denn der
+          # Assembler kennt die Instruktionen unabhaengig von der Hardware.
+          - {week: week1,   sme: false}
+          - {week: week2,   sme: false}
+          - {week: week3-4, sme: true}
+          - {week: week5,   sme: true}
+          - {week: week6,   sme: true}
+          - {week: week7,   sme: true}
+          - {week: week8,   sme: true}
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Hardware protokollieren
+        # Macht im Log nachvollziehbar, ob der Runner SME kann. Ohne diese
+        # Ausgabe sieht ein uebersprungener Test aus wie ein bestandener.
+        run: |
+          sysctl -n machdep.cpu.brand_string || true
+          echo "FEAT_SME: $(sysctl -n hw.optional.arm.FEAT_SME 2>/dev/null || echo 'nicht vorhanden')"
 
       - name: libomp installieren
         # Nur Woche 7 und 8 brauchen OpenMP. Der Schritt ist billig (Bottle) und
@@ -126,7 +143,20 @@ jobs:
       - name: Tests
         # Jede Woche hat ein test-Ziel. Sauberer Build plus Tests dauert lokal
         # zwischen 2 s (Woche 7) und 24 s (Woche 2).
-        run: make -C ${{ matrix.week }} test
+        #
+        # Ab Woche 3+4 fuehren die Tests SME-Instruktionen aus. SME gibt es erst
+        # ab Apple M4; die GitHub-Runner sind aelter. Dort wuerde bereits das
+        # erste smstart mit SIGILL abbrechen. Der Build bleibt trotzdem
+        # aussagekraeftig -- er hat den fehlerhaften x18-Clobber gefunden.
+        run: |
+          if [ "${{ matrix.sme }}" = "true" ]; then
+            SME=$(sysctl -n hw.optional.arm.FEAT_SME 2>/dev/null || echo 0)
+            if [ "$SME" != "1" ]; then
+              echo "::notice title=Tests uebersprungen::${{ matrix.week }} braucht SME (Apple M4 oder neuer). Runner: $(sysctl -n machdep.cpu.brand_string 2>/dev/null). Gebaut wurde, ausgefuehrt nicht."
+              exit 0
+            fi
+          fi
+          make -C ${{ matrix.week }} test
 
       - name: Build-Log sichern
         if: always()
