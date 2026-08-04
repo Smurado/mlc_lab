@@ -1,0 +1,32 @@
+========================================================================
+Hero-Fall ab-ac-cb @ 512^3 -- Neumessung nach dem SME-Fix
+  SA, 30 Trials, Seed 42, adaptiver Messblock
+========================================================================
+
+naiv (ungetunt, scalar) ...
+   -> 3.1 GFLOPS   (1s)
+
+TEIR getunt, scalar ...
+   -> 2.3 GFLOPS   (602s)
+
+TEIR getunt, NEON ...
+   -> 35.2 GFLOPS   (7s)
+
+TEIR getunt, SME ...
+   -> 1428.3 GFLOPS   (2s)
+
+========================================================================
+ERGEBNIS
+========================================================================
+  naiv (ungetunt, scalar)                                3.1 GFLOPS
+  TEIR getunt, scalar                                    2.3 GFLOPS
+  TEIR getunt, NEON                                     35.2 GFLOPS
+  TEIR getunt, SME                                    1428.3 GFLOPS
+  TVM (getunt, MetaSchedule) (uebernommen)             505.1 GFLOPS
+  PyTorch (torch.matmul, BLAS/AMX) (uebernommen)      2370.9 GFLOPS
+
+Gespeichert: /Users/justin/Developer/Repositories/mlc_lab/Projekt/autotuner/results/hero_sme.json
+
+Hinweis fuer den Bericht: Der Autotuner waehlt das Backend NICHT selbst.
+Die SME-Zahl gilt fuer einen Lauf mit TEIR_BACKEND=sme und nur fuer
+GEMM-foermige Kontraktionen mit durch 32 teilbaren M und N.

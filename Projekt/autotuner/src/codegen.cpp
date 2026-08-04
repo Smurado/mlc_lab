@@ -69,7 +69,13 @@ static std::string generateSMEKernel(const TEIR& ir) {
     ss << "    float* A_t = A_t_cache;\n\n";
 
     // smstart einmal aussen (Performance: kein wiederholter Mode-Wechsel)
-    ss << "    asm volatile(\"smstart\");\n";
+    // `smstart` macht die Z-/V-Register unspezifiziert -- darunter d8-d15, die
+    // nach AAPCS64 callee-saved sind. Ohne diese Clobber-Angabe darf der
+    // Compiler des AUFRUFERS dort Werte ueber den Aufruf hinweg halten und liest
+    // danach Nullen. Symptom: die Zeitmessung in benchmark.cpp/main.cpp ergibt
+    // eine Differenz von 0 -> "0 ms (0 GFLOPS)".
+    ss << "    asm volatile(\"smstart\" ::: \"d8\",\"d9\",\"d10\",\"d11\","
+          "\"d12\",\"d13\",\"d14\",\"d15\",\"memory\");\n";
     ss << "    asm volatile(\"ptrue p0.s\");\n\n";
 
     // M/N-Loops in C++ (wie gemm_512_512_512 aus week3-4)
@@ -109,19 +115,31 @@ static std::string generateSMEKernel(const TEIR& ir) {
 
     // Store: ZA-Tile direkt in out schreiben (out = za, ohne Read-Modify-Write)
     // mova braucht den Row-Index in w12-w15, daher feste Register wie in week3-4.
+    //
+    // WICHTIG - Unterschied zu week3-4: dort ist C SPALTENWEISE, hier ZEILENWEISE.
+    // `fmopa za, z0, z2` erzeugt za[i][j] = z0[i] * z2[j]; i ist die M-, j die
+    // N-Richtung. Eine VERTIKALE Scheibe (za0v) ist eine Kachelspalte, also
+    // C[m+i][n+row] ueber i -- das passt zu spaltenweisem C. Fuer zeilenweises C
+    // brauchen wir die HORIZONTALE Scheibe (za0h) = C[m+row][n+j] ueber j, die
+    // sich zusammenhaengend speichern laesst. week3-4 nutzt za*v voellig zu
+    // Recht; die Uebernahme hierher war der Fehler.
     ss << "            // ZA-Tile in out schreiben (out = za, kein fadd noetig)\n";
     ss << "            for (int row = 0; row < 16; ++row) {\n";
     ss << "                float* out_ptr0 = out + (m + row) * " << T << " + n;\n";
     ss << "                float* out_ptr1 = out_ptr0 + 16;\n";
     ss << "                register int row_reg asm(\"w12\") = row;\n";
     ss << "                asm volatile(\n";
-    ss << "                    \"mova z4.s, p0/m, za0v.s[w12, 0]\\n\\t\"\n";
+    ss << "                    \"mova z4.s, p0/m, za0h.s[w12, 0]\\n\\t\"\n";
     ss << "                    \"st1w {z4.s}, p0, [%[o0]]\\n\\t\"\n";
-    ss << "                    \"mova z4.s, p0/m, za2v.s[w12, 0]\\n\\t\"\n";
+    ss << "                    \"mova z4.s, p0/m, za2h.s[w12, 0]\\n\\t\"\n";
     ss << "                    \"st1w {z4.s}, p0, [%[o1]]\\n\\t\"\n";
     ss << "                    : \n";
-    ss << "                    : [o0] \"r\"(out_ptr0), [o1] \"r\"(out_ptr1)\n";
-    ss << "                    : \"z4\", \"w12\", \"memory\");\n";
+    // row_reg MUSS als Eingabe-Operand auftauchen, sonst haelt der Compiler die
+    // Variable fuer unbenutzt und initialisiert w12 nie -- `mova` liest dann eine
+    // beliebige Kachelspalte. Und w12 darf NICHT in der Clobber-Liste stehen: es
+    // ist eine Eingabe, kein zerstoertes Register.
+    ss << "                    : [o0] \"r\"(out_ptr0), [o1] \"r\"(out_ptr1), \"r\"(row_reg)\n";
+    ss << "                    : \"z4\", \"memory\");\n";
     ss << "            }\n";
     // Zweite Haelfte (Zeilen 16..31): za1/za3
     ss << "            for (int row = 0; row < 16; ++row) {\n";
@@ -129,13 +147,17 @@ static std::string generateSMEKernel(const TEIR& ir) {
     ss << "                float* out_ptr1 = out_ptr0 + 16;\n";
     ss << "                register int row_reg asm(\"w12\") = row;\n";
     ss << "                asm volatile(\n";
-    ss << "                    \"mova z4.s, p0/m, za1v.s[w12, 0]\\n\\t\"\n";
+    ss << "                    \"mova z4.s, p0/m, za1h.s[w12, 0]\\n\\t\"\n";
     ss << "                    \"st1w {z4.s}, p0, [%[o0]]\\n\\t\"\n";
-    ss << "                    \"mova z4.s, p0/m, za3v.s[w12, 0]\\n\\t\"\n";
+    ss << "                    \"mova z4.s, p0/m, za3h.s[w12, 0]\\n\\t\"\n";
     ss << "                    \"st1w {z4.s}, p0, [%[o1]]\\n\\t\"\n";
     ss << "                    : \n";
-    ss << "                    : [o0] \"r\"(out_ptr0), [o1] \"r\"(out_ptr1)\n";
-    ss << "                    : \"z4\", \"w12\", \"memory\");\n";
+    // row_reg MUSS als Eingabe-Operand auftauchen, sonst haelt der Compiler die
+    // Variable fuer unbenutzt und initialisiert w12 nie -- `mova` liest dann eine
+    // beliebige Kachelspalte. Und w12 darf NICHT in der Clobber-Liste stehen: es
+    // ist eine Eingabe, kein zerstoertes Register.
+    ss << "                    : [o0] \"r\"(out_ptr0), [o1] \"r\"(out_ptr1), \"r\"(row_reg)\n";
+    ss << "                    : \"z4\", \"memory\");\n";
     ss << "            }\n";
     ss << "        }\n"; // Ende N-Loop
     ss << "    }\n\n"; // Ende M-Loop
@@ -622,7 +644,13 @@ static std::string generateSMEKernelGEMM(const TEIR& ir, const GEMMMapping& gm) 
     ss << "    }\n";
     ss << "    float* A_t = A_t_cache;\n\n";
 
-    ss << "    asm volatile(\"smstart\");\n";
+    // `smstart` macht die Z-/V-Register unspezifiziert -- darunter d8-d15, die
+    // nach AAPCS64 callee-saved sind. Ohne diese Clobber-Angabe darf der
+    // Compiler des AUFRUFERS dort Werte ueber den Aufruf hinweg halten und liest
+    // danach Nullen. Symptom: die Zeitmessung in benchmark.cpp/main.cpp ergibt
+    // eine Differenz von 0 -> "0 ms (0 GFLOPS)".
+    ss << "    asm volatile(\"smstart\" ::: \"d8\",\"d9\",\"d10\",\"d11\","
+          "\"d12\",\"d13\",\"d14\",\"d15\",\"memory\");\n";
     ss << "    asm volatile(\"ptrue p0.s\");\n\n";
 
     ss << "    for (int mb = 0; mb < " << mBlocks << "; ++mb) {\n";
@@ -656,26 +684,34 @@ static std::string generateSMEKernelGEMM(const TEIR& ir, const GEMMMapping& gm) 
     ss << "                float* out_ptr1 = out_ptr0 + 16;\n";
     ss << "                register int row_reg asm(\"w12\") = row;\n";
     ss << "                asm volatile(\n";
-    ss << "                    \"mova z4.s, p0/m, za0v.s[w12, 0]\\n\\t\"\n";
+    ss << "                    \"mova z4.s, p0/m, za0h.s[w12, 0]\\n\\t\"\n";
     ss << "                    \"st1w {z4.s}, p0, [%[o0]]\\n\\t\"\n";
-    ss << "                    \"mova z4.s, p0/m, za2v.s[w12, 0]\\n\\t\"\n";
+    ss << "                    \"mova z4.s, p0/m, za2h.s[w12, 0]\\n\\t\"\n";
     ss << "                    \"st1w {z4.s}, p0, [%[o1]]\\n\\t\"\n";
     ss << "                    : \n";
-    ss << "                    : [o0] \"r\"(out_ptr0), [o1] \"r\"(out_ptr1)\n";
-    ss << "                    : \"z4\", \"w12\", \"memory\");\n";
+    // row_reg MUSS als Eingabe-Operand auftauchen, sonst haelt der Compiler die
+    // Variable fuer unbenutzt und initialisiert w12 nie -- `mova` liest dann eine
+    // beliebige Kachelspalte. Und w12 darf NICHT in der Clobber-Liste stehen: es
+    // ist eine Eingabe, kein zerstoertes Register.
+    ss << "                    : [o0] \"r\"(out_ptr0), [o1] \"r\"(out_ptr1), \"r\"(row_reg)\n";
+    ss << "                    : \"z4\", \"memory\");\n";
     ss << "            }\n";
     ss << "            for (int row = 0; row < 16; ++row) {\n";
     ss << "                float* out_ptr0 = out + (m + 16 + row) * " << T << " + n;\n";
     ss << "                float* out_ptr1 = out_ptr0 + 16;\n";
     ss << "                register int row_reg asm(\"w12\") = row;\n";
     ss << "                asm volatile(\n";
-    ss << "                    \"mova z4.s, p0/m, za1v.s[w12, 0]\\n\\t\"\n";
+    ss << "                    \"mova z4.s, p0/m, za1h.s[w12, 0]\\n\\t\"\n";
     ss << "                    \"st1w {z4.s}, p0, [%[o0]]\\n\\t\"\n";
-    ss << "                    \"mova z4.s, p0/m, za3v.s[w12, 0]\\n\\t\"\n";
+    ss << "                    \"mova z4.s, p0/m, za3h.s[w12, 0]\\n\\t\"\n";
     ss << "                    \"st1w {z4.s}, p0, [%[o1]]\\n\\t\"\n";
     ss << "                    : \n";
-    ss << "                    : [o0] \"r\"(out_ptr0), [o1] \"r\"(out_ptr1)\n";
-    ss << "                    : \"z4\", \"w12\", \"memory\");\n";
+    // row_reg MUSS als Eingabe-Operand auftauchen, sonst haelt der Compiler die
+    // Variable fuer unbenutzt und initialisiert w12 nie -- `mova` liest dann eine
+    // beliebige Kachelspalte. Und w12 darf NICHT in der Clobber-Liste stehen: es
+    // ist eine Eingabe, kein zerstoertes Register.
+    ss << "                    : [o0] \"r\"(out_ptr0), [o1] \"r\"(out_ptr1), \"r\"(row_reg)\n";
+    ss << "                    : \"z4\", \"memory\");\n";
     ss << "            }\n";
     ss << "        }\n";
     ss << "    }\n\n";
@@ -690,7 +726,15 @@ std::string generateSourceCode(const TEIR& ir) {
         EinsumSpec spec = parseEinsum(ir.einsum);
         if (isGEMMForm(spec)) {
             GEMMMapping gm = extractGEMMMapping(spec);
-            if (ir.backend == Backend::SME) {
+            // SME nur bei durch 32 teilbaren M und N: der Kernel arbeitet in
+            // 32x32-Bloecken und rundet die Blockzahl AUF ((R+31)/32). Bei z.B.
+            // R=48 wuerde er zwei Bloecke = 64 Zeilen verarbeiten und dabei
+            // ueber das Tensorende hinaus lesen und schreiben. Fuer solche
+            // Groessen faellt der Dispatch auf den generischen Einsum-Kernel
+            // zurueck, der jede Groesse korrekt behandelt.
+            const int smeM = extentOfChar(ir, gm.out0_axis);
+            const int smeN = extentOfChar(ir, gm.out1_axis);
+            if (ir.backend == Backend::SME && smeM % 32 == 0 && smeN % 32 == 0) {
                 return generateSMEKernelGEMM(ir, gm);
             }
             if (ir.backend == Backend::NEON) {
