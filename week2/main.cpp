@@ -71,17 +71,34 @@ TEST_CASE("Permutation abc -> cba wird korrekt berechnet", "[perm_neon_abc_cba]"
     const int A = 8;
     const int B = 4;
 
-    const std::vector<int64_t> size_c_tests = {1, 2, 4, 8, 15, 32};
+    // Groessen so gewaehlt, dass beide Codepfade getroffen werden: der
+    // 4er-Blockpfad und der skalare Rest. 1/2/3 liegen komplett im Rest,
+    // 15/33 lassen einen Rest uebrig, 4/8/32 gehen glatt auf.
+    const std::vector<int64_t> size_c_tests = {1, 2, 3, 4, 5, 7, 8, 15, 16, 32, 33};
+
+    // Schutzstreifen vor und hinter dem Ausgabepuffer. Ohne ihn faellt ein
+    // Schreibzugriff JENSEITS des gueltigen Bereichs nicht auf -- die
+    // Indexpruefung unten sieht nur Indizes innerhalb der Matrix.
+    const int GUARD = 64;
+    const float GUARD_VALUE = -12345.0f;
 
     for (int64_t size_c : size_c_tests) {
         const int total = A * B * size_c;
-        std::vector<float> abc(total), cba(total, 0.0f);
+        std::vector<float> abc(total);
 
         for (int i = 0; i < total; ++i) {
             abc[i] = static_cast<float>(i + 1);
         }
 
-        perm_neon_abc_cba(size_c, abc.data(), cba.data());
+        // Fuellwert ungleich null: so faellt auch auf, wenn ein Element gar
+        // nicht beschrieben wird, statt nur falsch beschrieben zu werden.
+        std::vector<float> buffer(total + 2 * GUARD, GUARD_VALUE);
+        float *cba = buffer.data() + GUARD;
+        for (int i = 0; i < total; ++i) cba[i] = 0.0f;
+
+        perm_neon_abc_cba(size_c, abc.data(), cba);
+
+        INFO("size_c = " << size_c);
 
         // Erwartetes Ergebnis pruefen:
         // abc row-major: a*(B*C) + b*C + c
@@ -94,6 +111,12 @@ TEST_CASE("Permutation abc -> cba wird korrekt berechnet", "[perm_neon_abc_cba]"
                     REQUIRE(cba[cba_idx] == abc[abc_idx]);
                 }
             }
+        }
+
+        // Schutzstreifen muessen unberuehrt sein.
+        for (int i = 0; i < GUARD; ++i) {
+            REQUIRE(buffer[i] == GUARD_VALUE);                       // davor
+            REQUIRE(buffer[GUARD + total + i] == GUARD_VALUE);       // dahinter
         }
     }
 }
