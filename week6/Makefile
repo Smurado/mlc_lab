@@ -1,4 +1,6 @@
-CXX = g++
+# clang++ statt g++, damit lokal und CI denselben Compiler nutzen -- siehe
+# die ausfuehrliche Begruendung in week5/Makefile.
+CXX = clang++
 CXXFLAGS = -O3 -std=c++17 -Wall -Wextra -I../lib
 # Apple Silicon (M4) unterstützt SME, aber KEIN normales SVE (SVE-Befehle sind
 # nur im Streaming-Mode legal). Wir kompilieren den C++-Code daher für die
