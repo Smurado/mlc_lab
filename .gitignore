@@ -33,6 +33,14 @@ test_run
 test_run_debug
 *test_run*
 
+# Kompilierte Programme der Wochenaufgaben (Quelltexte werden versioniert)
+week*/main_test
+week*/teir_runtime
+week*/test_week*
+!week*/main_test.cpp
+!week*/teir_runtime.cpp
+!week*/test_week*.cpp
+
 # Autotuner JIT/build artifacts (Scratch landet in src/ bzw. eval/)
 Projekt/autotuner/src/teir_compiler
 Projekt/autotuner/src/*.o
@@ -79,6 +87,18 @@ Projekt/autotuner/autotuner_results.csv
 /_var.csv
 /_herobake.log
 /a.out
+
+# Arbeitsdateien, die bewusst lokal bleiben (Planung, Vortrag, Literatur)
+Projekt/Roadmap*.md
+Projekt/Praesentation.md
+Projekt/Präsentation.md
+Projekt/Ideen.md
+Projekt/Paper/
+Presentation/
+Projekt/BERICHT-BEFUNDE.md
+Projekt/TODO_Code-Vervollstaendigung.md
+SESSION-HANDOFF.md
+HANDOFF-*.md
 
 # Laufzeit-Marker der Messlaeufe (die Ergebnis-CSVs daneben bleiben ERHALTEN)
 Projekt/autotuner/results/**/_worker.out
