@@ -185,7 +185,10 @@ static void call_gemm(Gemm::kernel_t kern,
         : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x3), "+r"(x4), "+r"(x5)
         : [fn] "r"(fn)
         : "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15",
-          "x16", "x17", "x18", "x30",
+          // x18 steht bewusst NICHT hier: auf Apple-Plattformen ist es das
+          // Platform-Register und darf nicht ueberschrieben werden. Der
+          // Kernel fasst es in keinem seiner 114 Instruktionswoerter an.
+          "x16", "x17", "x30",
           "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15",
           "memory", "cc"
     );
