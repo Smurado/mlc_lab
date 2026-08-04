@@ -159,7 +159,7 @@ Rohdaten: ``Projekt/autotuner/results/hero_sme.json``.
       schlechten Punkt kreisen lässt.
 
 5.2 Einordnung gegen die Wochenaufgaben
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Alle Werte auf derselben Maschine und im selben Semester gemessen.
 
