@@ -1,0 +1,24 @@
+// Kleine Transposition fuer die Testreferenz.
+//   in ist  c-aeusser / d-zusammenhaengend:  in[a][c][d]  = in[((a*32)+c)*32 + d]
+//   out ist d-aeusser / c-zusammenhaengend:  out[a][d][c] = out[((a*32)+d)*32 + c]
+// c und d sind 32 gross, damit der Unary-Kernel greift (m % 16 == 0 && n % 16 == 0).
+// Die aeussere Achse @a stellt sicher, dass auch der Basisversatz geprueft wird --
+// mit nur einer Kachel faellt ein falscher Offset nicht auf.
+// Strides in BYTES.
+teir @test_transposition {
+  tensor %in  : f32
+  tensor %out : f32
+
+  axis @a extent 2  strides { in: 4096, out: 4096 }
+  axis @c extent 32 strides { in: 128,  out: 4    }
+  axis @d extent 32 strides { in: 4,    out: 128  }
+
+  primitive @copy : Copy axes { M: [@c], N: [@d] } metadata { data_type: f32 }
+
+  schedule {
+    roots [@iter_a]
+
+    iter @iter_a axis @a policy sequential children [@inv_copy]
+    invoke @inv_copy primitive @copy
+  }
+}
