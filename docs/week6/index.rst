@@ -36,34 +36,49 @@ Speicher nicht mehr benachbart sind. Umgesetzt ist das für ``identity`` und ``r
 
 **Messwerte Unary (GiB/s)**
 
+Angegeben ist der Median aus 15 Läufen, dazu die Spannweite (Maximum minus Minimum,
+bezogen auf den Median) über dieselben Läufe.
+
 .. list-table::
    :header-rows: 1
-   :widths: 25 25 25 25
+   :widths: 16 21 21 21 21
 
    * - Größe
      - Zero
      - Identity
      - ReLU
+     - größte Spannweite
    * - 128x512
-     - 226,8
-     - 447,2
-     - 304,4
+     - 225,1
+     - 436,9
+     - 303,2
+     - 21,6 %
    * - 512x64
-     - 199,7
-     - 403,7
-     - 302,1
+     - 202,0
+     - 402,8
+     - 302,0
+     - 9,5 %
    * - 512x128
-     - 206,5
-     - 407,2
-     - 303,3
+     - 204,3
+     - 405,4
+     - 303,6
+     - 4,7 %
    * - 512x512
-     - 207,0
-     - 410,0
-     - 304,3
+     - 204,7
+     - 409,1
+     - 303,9
+     - 4,8 %
 
 ``identity`` liegt bei etwa dem Doppelten von ``zero``, weil beide dieselbe Anzahl Elemente
 schreiben, ``identity`` sie aber zusätzlich liest und die gemessene Bandbreite beide Richtungen
 zählt.
+
+**Kleine Matrizen sind nicht belastbar messbar.** Die Spannweite wächst, je kleiner die Matrix
+wird: bei 512x512 liegt sie unter 5 Prozent, bei 128x128 bereits bei 29 Prozent und bei 64x64
+bei 52 Prozent. Der Kernel läuft dort so kurz, dass Aufrufaufwand, Zeitmessung und
+Hintergrundlast das Ergebnis bestimmen und nicht mehr die Bandbreite. Für Vergleiche taugen
+deshalb nur die Zeilen ab 512 in einer Dimension; die kleineren Größen sind in der Tabelle
+bewusst nicht aufgeführt.
 
 3. GEMM Primitive (SME)
 -----------------------
@@ -91,6 +106,9 @@ Andernfalls fällt er auf eine einzelne 16x16-Kachel zurück:
 
 **Messwerte GEMM (GFLOPS)**
 
+Median aus 15 Läufen. Die Spannweite liegt hier über alle 27 Konfigurationen zwischen 2,7 und
+9,4 Prozent, die Werte sind also deutlich stabiler als die Unary-Messungen kleiner Matrizen.
+
 .. list-table::
    :header-rows: 1
    :widths: 20 20 20 20
@@ -100,41 +118,41 @@ Andernfalls fällt er auf eine einzelne 16x16-Kachel zurück:
      - K = 128
      - K = 512
    * - 64 x 64
-     - 1323,4
-     - 1592,7
-     - 1844,9
+     - 1324,7
+     - 1589,4
+     - 1867,0
    * - 64 x 128
-     - 1335,0
-     - 1563,4
-     - 1890,9
+     - 1322,4
+     - 1580,6
+     - 1868,3
    * - 64 x 512
-     - 1326,5
-     - 1560,9
-     - 1886,7
+     - 1317,8
+     - 1588,1
+     - 1847,8
    * - 128 x 64
-     - 1325,5
-     - 1573,7
-     - 1888,8
+     - 1328,0
+     - 1587,2
+     - 1872,9
    * - 128 x 128
-     - 1296,6
-     - 1605,0
-     - 1882,4
+     - 1324,7
+     - 1578,0
+     - 1876,6
    * - 128 x 512
-     - 1308,5
-     - 1605,0
-     - 1829,1
+     - 1320,9
+     - 1583,4
+     - 1872,7
    * - 512 x 64
-     - 1139,1
-     - 1433,8
-     - 1843,5
+     - 1129,7
+     - 1455,5
+     - 1827,8
    * - 512 x 128
-     - 1169,5
-     - 1440,8
-     - 1848,9
+     - 1146,5
+     - 1461,7
+     - 1822,2
    * - 512 x 512
-     - 1109,1
-     - 1494,9
-     - 1800,4
+     - 1137,4
+     - 1457,8
+     - 1796,0
 
 .. figure:: benchmarks.png
    :alt: GEMM-Durchsatz über 27 Konfigurationen und Unary-Bandbreiten
@@ -146,11 +164,16 @@ Andernfalls fällt er auf eine einzelne 16x16-Kachel zurück:
    Bandbreite der Unary-Kernel.
 
 Der Durchsatz hängt vor allem von K ab, nicht von M und N. Bei K = 64 liegt der Mittelwert bei
-1259 GFLOPS, bei K = 128 bei 1541 und bei K = 512 bei 1857. Der Grund ist das Verhältnis von
+1261 GFLOPS, bei K = 128 bei 1542 und bei K = 512 bei 1850. Der Grund ist das Verhältnis von
 Rechenarbeit zu Randaufwand: Das Laden von C in das ZA-Array und das Zurückschreiben fallen je
 Ausgabekachel einmal an, unabhängig von K. Je mehr ``fmopa``-Schritte dazwischen liegen, desto
-weniger fällt dieser Anteil ins Gewicht. Der höchste gemessene Wert ist 1890,9 GFLOPS bei
-64x128x512.
+weniger fällt dieser Anteil ins Gewicht. Der höchste gemessene Median ist 1876,6 GFLOPS bei
+128x128x512.
+
+**Messbedingungen.** Alle Werte stammen von einem Apple M4 Max, übersetzt mit Apple clang 21
+und den Flags aus ``week6/Makefile``. Je Messpunkt 15 Läufe, angegeben ist der Median. Die
+Maschine war während der Messung nicht vollständig lastfrei; das erklärt einen Teil der
+Spannweite, nicht aber deren Abhängigkeit von der Problemgröße.
 
 4. Callee-Saved Registers (Lösung zum -O3 Bug)
 ----------------------------------------------
