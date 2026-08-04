@@ -569,11 +569,6 @@ welchen Anteil entfällt.
 8. Offenlegung der GenAI-Nutzung
 --------------------------------
 
-.. hint::
-
-   Dieser Abschnitt ist zu prüfen und zu ergänzen. Er beschreibt den Stand aus Sicht
-   der Werkzeugnutzung; ob er vollständig ist, könnt nur ihr beurteilen.
-
 Für dieses Projekt wurde ein KI-Assistent (Claude) eingesetzt. Die Nutzung umfasste:
 
 - **Fehlersuche und Analyse.** Eingrenzung der drei Fehler im SME-Backend, der
