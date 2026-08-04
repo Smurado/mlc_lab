@@ -1,0 +1,86 @@
+Current executable set to '/Users/justin/Developer/Repositories/mlc_lab/week1/test_run_debug' (arm64).
+Executing commands in '/Users/justin/Developer/Repositories/mlc_lab/week1/debug/inner_product.lldb'.
+Breakpoint 1: where = test_run_debug`inner_product, address = 0x00000001000dd1ec
+Process 32013 launched: '/Users/justin/Developer/Repositories/mlc_lab/week1/test_run_debug' (arm64)
+Process 32013 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 1.1
+    frame #0: 0x00000001000dd1ec test_run_debug`inner_product
+test_run_debug`inner_product:
+->  0x1000dd1ec <+0>: mov    x8, #0x0                  ; =0 
+    0x1000dd1f0 <+4>: mov    w4, #0x0                  ; =0 
+test_run_debug`___lldb_unnamed_symbol_1000dd1f4:
+    0x1000dd1f4 <+0>: cmp    w4, w2
+    0x1000dd1f8 <+4>: b.ge   0x1000dd214               ; ___lldb_unnamed_symbol_1000dd214
+Target 0: (test_run_debug) stopped.
+      x0 = 0x000000016fdfda80
+      x1 = 0x000000016fdfda70
+      w2 = 0x00000004
+0x16fdfda80: 1
+0x16fdfda84: 2
+0x16fdfda88: 3
+0x16fdfda8c: 4
+0x16fdfda70: 5
+0x16fdfda74: 6
+0x16fdfda78: 7
+0x16fdfda7c: 8
+Process 32013 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = instruction step into
+    frame #0: 0x00000001000dd1f0 test_run_debug`inner_product + 4
+test_run_debug`inner_product:
+->  0x1000dd1f0 <+4>: mov    w4, #0x0                  ; =0 
+test_run_debug`___lldb_unnamed_symbol_1000dd1f4:
+    0x1000dd1f4 <+0>: cmp    w4, w2
+    0x1000dd1f8 <+4>: b.ge   0x1000dd214               ; ___lldb_unnamed_symbol_1000dd214
+    0x1000dd1fc <+8>: ldr    w5, [x0, w4, uxtw #2]
+Target 0: (test_run_debug) stopped.
+Process 32013 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = instruction step into
+    frame #0: 0x00000001000dd1f4 test_run_debug`___lldb_unnamed_symbol_1000dd1f4
+test_run_debug`___lldb_unnamed_symbol_1000dd1f4:
+->  0x1000dd1f4 <+0>:  cmp    w4, w2
+    0x1000dd1f8 <+4>:  b.ge   0x1000dd214               ; ___lldb_unnamed_symbol_1000dd214
+    0x1000dd1fc <+8>:  ldr    w5, [x0, w4, uxtw #2]
+    0x1000dd200 <+12>: ldr    w6, [x1, w4, uxtw #2]
+Target 0: (test_run_debug) stopped.
+      x8 = 0x0000000000000000
+      w4 = 0x00000000
+Process 32013 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = instruction step into
+    frame #0: 0x00000001000dd20c test_run_debug`___lldb_unnamed_symbol_1000dd1f4 + 24
+test_run_debug`___lldb_unnamed_symbol_1000dd1f4:
+->  0x1000dd20c <+24>: add    w4, w4, #0x1
+    0x1000dd210 <+28>: b      0x1000dd1f4               ; <+0>
+test_run_debug`___lldb_unnamed_symbol_1000dd214:
+    0x1000dd214 <+0>:  mov    x0, x8
+    0x1000dd218 <+4>:  ret    
+Target 0: (test_run_debug) stopped.
+      w4 = 0x00000000
+      w5 = 0x00000005
+      w6 = 0x00000005
+      x8 = 0x0000000000000005
+Process 32013 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = instruction step into
+    frame #0: 0x00000001000dd20c test_run_debug`___lldb_unnamed_symbol_1000dd1f4 + 24
+test_run_debug`___lldb_unnamed_symbol_1000dd1f4:
+->  0x1000dd20c <+24>: add    w4, w4, #0x1
+    0x1000dd210 <+28>: b      0x1000dd1f4               ; <+0>
+test_run_debug`___lldb_unnamed_symbol_1000dd214:
+    0x1000dd214 <+0>:  mov    x0, x8
+    0x1000dd218 <+4>:  ret    
+Target 0: (test_run_debug) stopped.
+      w4 = 0x00000001
+      w5 = 0x0000000c
+      w6 = 0x00000006
+      x8 = 0x0000000000000011
+Process 32013 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = step out
+    frame #0: 0x000000010002ec60 test_run_debug`C_A_T_C_H_T_E_S_T_0() at main.cpp:31:5
+   28  	    uint32_t size = 4;
+   29  	
+   30  	    // Erwartetes Ergebnis: 1*5 + 2*6 + 3*7 + 4*8 = 70
+-> 31  	    REQUIRE(inner_product(a, b, size) == 70);
+    	    ^
+   32  	}
+   33  	
+   34  	TEST_CASE("Outer Product wird korrekt berechnet", "[outer_product]") {
+Target 0: (test_run_debug) stopped.

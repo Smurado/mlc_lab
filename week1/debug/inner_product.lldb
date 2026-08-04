@@ -1,0 +1,39 @@
+# Schrittweises Durchlaufen eines Beispielaufrufs von inner_product (Aufgabe 2).
+#
+# Aufruf:  make debug && lldb --batch -s debug/inner_product.lldb ./test_run_debug
+#
+# Der erste Aufruf stammt aus dem Testfall "Inner Product wird korrekt berechnet"
+# mit a = {1,2,3,4}, b = {5,6,7,8}, size = 4. Erwartet: 1*5+2*6+3*7+4*8 = 70.
+#
+# Hinweis zur Werkzeugwahl: Die Aufgabe nennt GDB. Auf Apple Silicon meldet
+# mainline-GDB die Zielarchitektur als "i386" und kann die DWARF-Daten des
+# arm64-Binaries nicht lesen -- aarch64-darwin wird nicht unterstuetzt. lldb ist
+# auf dieser Plattform das aequivalente Werkzeug; die GDB-Befehle stehen in
+# debug/README.md daneben.
+
+breakpoint set --name inner_product
+run
+
+# --- Eintritt: Argumente nach AAPCS64 ---------------------------------------
+# x0 = Zeiger auf a, x1 = Zeiger auf b, w2 = size
+register read x0 x1 w2
+memory read --size 4 --format u --count 4 $x0
+memory read --size 4 --format u --count 4 $x1
+
+# --- Prolog: Summe (x8) und Zaehler (w4) auf 0 ------------------------------
+thread step-inst
+thread step-inst
+register read x8 w4
+
+# --- Erster Schleifendurchlauf ---------------------------------------------
+# cmp / b.ge / ldr a[0] / ldr b[0] / umull / add
+thread step-inst -c 6
+register read w4 w5 w6 x8
+
+# --- Zweiter Durchlauf ------------------------------------------------------
+thread step-inst -c 8
+register read w4 w5 w6 x8
+
+# --- Bis zum Ruecksprung durchlaufen ---------------------------------------
+finish
+quit
