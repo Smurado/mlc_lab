@@ -108,6 +108,40 @@ else if (ptype == ptype_t::identity) {
         emit(0xf1000529);                    // subs x9, x9, #1
         emit(encode_b_ne(outer_start, idx));
     }
+    else {
+        // ---------------------------------------------------------------
+        // trans_b == 1: B liegt ZEILENWEISE vor, A spaltenweise.
+        //   A(i,j) = a + j*ld_a + i     (Spalten zusammenhaengend)
+        //   B(i,j) = b + i*ld_b + j     (Zeilen  zusammenhaengend)
+        // Es kann also nur eine der beiden Seiten zusammenhaengend laufen.
+        // Deshalb hier eine skalare Schleife: A wird spaltenweise gelesen
+        // (zusammenhaengend), B mit Schrittweite ld_b geschrieben.
+        //
+        // Bewusst nicht vektorisiert: ein SVE-Scatter waere schneller, aber
+        // dieser Pfad fehlte bisher vollstaendig -- Korrektheit zuerst.
+        // ---------------------------------------------------------------
+        emit(0xaa0003e6);                 // mov x6, x0  (A-Spaltenbasis)
+        emit(0xaa0103e7);                 // mov x7, x1  (B-Elementbasis)
+        emit(encode_mov_k_x(9, n));       // mov x9, n   (Spaltenzaehler j)
+
+        int outer_start = idx;
+        emit(0xaa0603e4);                 // mov x4, x6  (A laufend)
+        emit(0xaa0703e5);                 // mov x5, x7  (B laufend)
+        emit(encode_mov_k_x(10, m));      // mov x10, m  (Zeilenzaehler i)
+
+        int inner_start = idx;
+        emit(0xbd400080);                    // ldr s0, [x4]
+        emit(0xbd0000a0);                    // str s0, [x5]
+        emit(0x91001084);                    // add x4, x4, #4   (naechstes i in A)
+        emit(0x8b0300a5);                    // add x5, x5, x3   (naechstes i in B: +ld_b)
+        emit(0xf100054a);                    // subs x10, x10, #1
+        emit(encode_b_ne(inner_start, idx));
+
+        emit(0x8b0200c6);                    // add x6, x6, x2   (naechste Spalte in A)
+        emit(0x910010e7);                    // add x7, x7, #4   (naechste Spalte in B)
+        emit(0xf1000529);                    // subs x9, x9, #1
+        emit(encode_b_ne(outer_start, idx));
+    }
 
     emit(0xd503427f); // smstop sm
 }
@@ -144,6 +178,42 @@ else if (ptype == ptype_t::relu) {
         emit(0xf1000529);                    // subs x9, x9, #1
         emit(encode_b_ne(outer_start, idx));
     }
+    else {
+        // ---------------------------------------------------------------
+        // trans_b == 1: B liegt ZEILENWEISE vor, A spaltenweise.
+        //   A(i,j) = a + j*ld_a + i     (Spalten zusammenhaengend)
+        //   B(i,j) = b + i*ld_b + j     (Zeilen  zusammenhaengend)
+        // Es kann also nur eine der beiden Seiten zusammenhaengend laufen.
+        // Deshalb hier eine skalare Schleife: A wird spaltenweise gelesen
+        // (zusammenhaengend), B mit Schrittweite ld_b geschrieben.
+        //
+        // Bewusst nicht vektorisiert: ein SVE-Scatter waere schneller, aber
+        // dieser Pfad fehlte bisher vollstaendig -- Korrektheit zuerst.
+        // ---------------------------------------------------------------
+        emit(0x1e2703ff);                 // fmov s31, wzr (Null fuer ReLU)
+        emit(0xaa0003e6);                 // mov x6, x0  (A-Spaltenbasis)
+        emit(0xaa0103e7);                 // mov x7, x1  (B-Elementbasis)
+        emit(encode_mov_k_x(9, n));       // mov x9, n   (Spaltenzaehler j)
+
+        int outer_start = idx;
+        emit(0xaa0603e4);                 // mov x4, x6  (A laufend)
+        emit(0xaa0703e5);                 // mov x5, x7  (B laufend)
+        emit(encode_mov_k_x(10, m));      // mov x10, m  (Zeilenzaehler i)
+
+        int inner_start = idx;
+        emit(0xbd400080);                    // ldr s0, [x4]
+        emit(0x1e3f4800);                    // fmax s0, s0, s31 (ReLU)
+        emit(0xbd0000a0);                    // str s0, [x5]
+        emit(0x91001084);                    // add x4, x4, #4   (naechstes i in A)
+        emit(0x8b0300a5);                    // add x5, x5, x3   (naechstes i in B: +ld_b)
+        emit(0xf100054a);                    // subs x10, x10, #1
+        emit(encode_b_ne(inner_start, idx));
+
+        emit(0x8b0200c6);                    // add x6, x6, x2   (naechste Spalte in A)
+        emit(0x910010e7);                    // add x7, x7, #4   (naechste Spalte in B)
+        emit(0xf1000529);                    // subs x9, x9, #1
+        emit(encode_b_ne(outer_start, idx));
+    }
 
     emit(0xd503427f); // smstop sm
 }
@@ -158,7 +228,21 @@ else if (ptype == ptype_t::relu) {
     emit(0xd65f03c0); // ret
 
     mprotect(mem, size, PROT_READ | PROT_EXEC);
-    
+    // Instruktions-Cache invalidieren. Auf AArch64 sind Daten- und
+    // Instruktions-Cache NICHT kohaerent: frisch geschriebene Bytes stehen im
+    // D-Cache, waehrend der I-Cache fuer dieselbe Adresse noch alte Zeilen
+    // haelt. mprotect allein raeumt den I-Cache nicht.
+    //
+    // Praktisch schlaegt das erst zu, wenn munmap/mmap eine Adresse
+    // WIEDERVERWENDET: dann fuehrt die CPU den alten Kernel an der neuen
+    // Adresse aus -- mit falschen Groessen und Schrittweiten, also wilden
+    // Zeigern. Das erklaert die Nichtdeterminanz: der Absturz haengt daran, ob
+    // zufaellig noch alte Zeilen im I-Cache stehen.
+    //
+    // Gemm.cpp machte das von Anfang an richtig, Unary.cpp nicht.
+    __builtin___clear_cache(reinterpret_cast<char*>(mem),
+                            reinterpret_cast<char*>(mem) + size);
+
     this->m_code = mem;
     this->m_size = size;
 
