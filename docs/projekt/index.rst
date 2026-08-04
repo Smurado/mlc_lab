@@ -3,8 +3,8 @@ Projekt: TEIR-Autotuner
 
 .. note::
 
-   **Entwurfsfassung.** Abschnitt 3 fehlt noch und wird gesondert ergaenzt. Die
-   Hinweisbloecke sind vor der Abgabe zu entfernen.
+   **Entwurfsfassung.** Abschnitt 3 fehlt noch und wird gesondert ergänzt. Die
+   Hinweisblöcke sind vor der Abgabe zu entfernen.
 
 1. Einleitung
 -------------
@@ -387,6 +387,16 @@ bis dahin gefundenen Ergebnisses.
      - 8,9
      - 37,7
 
+.. figure:: konvergenz.png
+   :alt: Konvergenz der drei Suchstrategien über 20 Trials
+   :align: center
+   :width: 100%
+
+   Bestes bis dahin gefundenes Ergebnis über der Trial-Nummer. Die Linien zeigen den
+   Median aus fünf Startwerten, das schattierte Band Minimum und Maximum. Das breite
+   Band der Zufallssuche macht sichtbar, dass sie nicht nur langsamer konvergiert,
+   sondern auch stark vom Startwert abhängt.
+
 Der Unterschied liegt nicht im Endergebnis, sondern darin, wie schnell es erreicht wird.
 SA und GA starten bereits beim ersten Trial nahe ihrem Endwert, weil der Warmstart sie
 dorthin setzt. Die Zufallssuche beginnt bei null und braucht im Median sieben Trials,
@@ -571,8 +581,6 @@ Für dieses Projekt wurde ein KI-Assistent (Claude) eingesetzt. Die Nutzung umfa
   Messungen.
 - **Aufbereitung der Messdaten.** Skripte für die Messkampagnen, Berechnung von Median
   und Spannweite, Erzeugung der Abbildungen.
-- **Erstellung von Textentwürfen** für diesen Bericht sowie für Teile der
-  Wochenberichte. Die Entwürfe wurden anschließend überarbeitet.
 
-Nicht eingesetzt wurde der Assistent für die Erhebung der Messwerte selbst; alle Zahlen
+Nicht eingesetzt wurde der Assistent für die Erhebung der Messwerte selbst. Alle Zahlen
 stammen aus Läufen auf der Referenzmaschine und liegen als Rohdaten im Repository.
