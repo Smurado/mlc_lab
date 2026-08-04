@@ -17,7 +17,13 @@ main: main.cpp Unary.cpp Gemm.cpp
 main_test: main_test.cpp Unary.cpp Gemm.cpp
 	$(CXX) $(CXXFLAGS) $(ASMFLAGS) -o $@ $^
 
+test: main_test
+	./main_test
+
+bench: main
+	./main
+
 clean:
 	rm -f $(TARGETS)
 
-.PHONY: all clean
+.PHONY: all test bench clean

@@ -1,15 +1,18 @@
 name: TEIR CI
 
-# Laeuft nur bei Aenderungen am Autotuner oder am Workflow selbst -- die
-# week*-Ordner gehoeren zum uebrigen Kurs und sollen keine CI-Minuten kosten.
+# Zwei getrennte Jobs: der Autotuner unter Projekt/ und die Wochenaufgaben.
+# Sie laufen unabhaengig voneinander, damit ein Fehler in einer Woche nicht die
+# Aussage ueber den Autotuner verdeckt.
 on:
   push:
     paths:
       - 'Projekt/autotuner/**'
+      - 'week*/**'
       - '.github/workflows/**'
   pull_request:
     paths:
       - 'Projekt/autotuner/**'
+      - 'week*/**'
       - '.github/workflows/**'
   workflow_dispatch:        # manuell ausloesbar
 
@@ -81,3 +84,58 @@ jobs:
           name: build-log
           path: build.log
           retention-days: 7
+
+  weeks:
+    # Die Wochenaufgaben teilen sich mini_jit (week6/Unary.cpp, week6/Gemm.cpp):
+    # Woche 7 und 8 binden dieselben Generatoren ein. Eine Aenderung dort bricht
+    # also drei Wochen gleichzeitig, was lokal leicht uebersehen wird.
+    #
+    # Konkreter Anlass: In Unary.cpp fehlte die Invalidierung des
+    # Instruktions-Cache nach dem mprotect. Der Fehler trat nur auf, wenn
+    # munmap/mmap eine Adresse wiederverwendete, und war damit nicht
+    # reproduzierbar -- genau die Sorte Fehler, die wiederholte Laeufe eher
+    # finden als eine einzelne Ausfuehrung von Hand.
+    runs-on: macos-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false        # eine kaputte Woche verdeckt die anderen nicht
+      matrix:
+        week: [week1, week2, week3-4, week5, week6, week7, week8]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: libomp installieren
+        # Nur Woche 7 und 8 brauchen OpenMP. Der Schritt ist billig (Bottle) und
+        # bleibt einheitlich, statt ihn pro Woche zu verzweigen.
+        run: brew install libomp
+
+      - name: Build (Compiler-Warnungen sind ein Fehler)
+        # Gleiches Tor wie beim Autotuner: keine Warnung erlaubt, aber die
+        # Meldung bleibt lesbar. Alle sieben Wochen bauen aktuell warnungsfrei.
+        run: |
+          set -o pipefail
+          make -C ${{ matrix.week }} 2>&1 | tee build-${{ matrix.week }}.log
+          if grep -qi "warning:" build-${{ matrix.week }}.log; then
+            echo "::error::${{ matrix.week }} erzeugt Compiler-Warnungen"
+            grep -i "warning:" build-${{ matrix.week }}.log
+            exit 1
+          fi
+
+      - name: Tests
+        # Jede Woche hat ein test-Ziel. Sauberer Build plus Tests dauert lokal
+        # zwischen 2 s (Woche 7) und 24 s (Woche 2).
+        run: make -C ${{ matrix.week }} test
+
+      - name: Build-Log sichern
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ matrix.week }}
+          path: build-${{ matrix.week }}.log
+          retention-days: 7
+
+      # Bewusst NICHT in der CI: die Benchmark-Ziele (make bench, make run).
+      # Messzahlen von einem geteilten Runner sind wertlos, weil fremde Last sie
+      # verfaelscht. Gemessen wird ausschliesslich lokal auf der idlen Maschine.
