@@ -41,6 +41,15 @@ Unary::error_t Unary::generate(uint32_t m, uint32_t n, uint32_t trans_b, dtype_t
     };
 
 if (ptype == ptype_t::zero) {
+    // AAPCS64: die unteren 64 Bit von v8-v15 sind callee-saved. `smstart`
+    // macht den Inhalt der Z-/V-Register unspezifiziert, also muessen sie
+    // vorher gesichert und am Ende zurueckgeschrieben werden. Ohne das
+    // verletzt der Kernel die Aufrufkonvention und der Aufrufer braucht einen
+    // Inline-Assembler-Wrapper mit Clobber-Liste, um nicht falsch zu rechnen.
+    emit(0x6dbc27e8); // stp d8,  d9,  [sp, #-64]!
+    emit(0x6d012fea); // stp d10, d11, [sp, #16]
+    emit(0x6d0237ec); // stp d12, d13, [sp, #32]
+    emit(0x6d033fee); // stp d14, d15, [sp, #48]
     emit(0xd503437f); // smstart sm
     emit(0x2598e120); // ptrue p0.s, vl16
     emit(0xd37ef463); // lsl x3, x3, #2 (ld_b in Bytes)
@@ -66,9 +75,22 @@ if (ptype == ptype_t::zero) {
     emit(encode_b_ne(outer_start, idx)); // b.ne outer
 
     emit(0xd503427f); // smstop sm
+    emit(0x6d412fea); // ldp d10, d11, [sp, #16]
+    emit(0x6d4237ec); // ldp d12, d13, [sp, #32]
+    emit(0x6d433fee); // ldp d14, d15, [sp, #48]
+    emit(0x6cc427e8); // ldp d8,  d9,  [sp], #64
     emit(0xd65f03c0); // ret
 }
 else if (ptype == ptype_t::identity) {
+    // AAPCS64: die unteren 64 Bit von v8-v15 sind callee-saved. `smstart`
+    // macht den Inhalt der Z-/V-Register unspezifiziert, also muessen sie
+    // vorher gesichert und am Ende zurueckgeschrieben werden. Ohne das
+    // verletzt der Kernel die Aufrufkonvention und der Aufrufer braucht einen
+    // Inline-Assembler-Wrapper mit Clobber-Liste, um nicht falsch zu rechnen.
+    emit(0x6dbc27e8); // stp d8,  d9,  [sp, #-64]!
+    emit(0x6d012fea); // stp d10, d11, [sp, #16]
+    emit(0x6d0237ec); // stp d12, d13, [sp, #32]
+    emit(0x6d033fee); // stp d14, d15, [sp, #48]
     emit(0xd503477f); // smstart
     emit(0x2598e120); // ptrue p0.s, vl16
     emit(0xd37ef442); // lsl x2, x2, #2
@@ -103,10 +125,23 @@ else if (ptype == ptype_t::identity) {
         }
 
         emit(0xd503467f); // smstop
+    emit(0x6d412fea); // ldp d10, d11, [sp, #16]
+    emit(0x6d4237ec); // ldp d12, d13, [sp, #32]
+    emit(0x6d433fee); // ldp d14, d15, [sp, #48]
+    emit(0x6cc427e8); // ldp d8,  d9,  [sp], #64
         emit(0xd65f03c0); // ret
     }
 else if (ptype == ptype_t::relu) {
     // Register-Layout: x0 = a, x1 = b, x2 = ld_a, x3 = ld_b
+    // AAPCS64: die unteren 64 Bit von v8-v15 sind callee-saved. `smstart`
+    // macht den Inhalt der Z-/V-Register unspezifiziert, also muessen sie
+    // vorher gesichert und am Ende zurueckgeschrieben werden. Ohne das
+    // verletzt der Kernel die Aufrufkonvention und der Aufrufer braucht einen
+    // Inline-Assembler-Wrapper mit Clobber-Liste, um nicht falsch zu rechnen.
+    emit(0x6dbc27e8); // stp d8,  d9,  [sp, #-64]!
+    emit(0x6d012fea); // stp d10, d11, [sp, #16]
+    emit(0x6d0237ec); // stp d12, d13, [sp, #32]
+    emit(0x6d033fee); // stp d14, d15, [sp, #48]
     emit(0xd503437f); // smstart sm
     emit(0x2598e120); // ptrue p0.s, vl16
     emit(0x25b8c01f); // mov z31.s, #0.0
@@ -140,6 +175,10 @@ else if (ptype == ptype_t::relu) {
     }
 
     emit(0xd503427f); // smstop sm
+    emit(0x6d412fea); // ldp d10, d11, [sp, #16]
+    emit(0x6d4237ec); // ldp d12, d13, [sp, #32]
+    emit(0x6d433fee); // ldp d14, d15, [sp, #48]
+    emit(0x6cc427e8); // ldp d8,  d9,  [sp], #64
     emit(0xd65f03c0); // ret
 }
 

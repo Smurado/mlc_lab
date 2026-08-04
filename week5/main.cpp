@@ -62,11 +62,25 @@ bool verify_relu(uint32_t m, uint32_t n) {
     return true;
 }
 
-// Wir deaktiveren hier gezielt die C++ Compiler-Optimierung für die Benchmark-Funktionen (O0).
-// Sonst speichert der Compiler die lokalen Variablen zur Zeitmessung in den "callee-saved" 
-// Vector-Registern (d8-d15). Da "smstart sm" diese Register hardwareseitig nullt, bekämen 
-// wir sonst Divisionen durch Null und kaputte Timer.
-__attribute__((optimize("O0"))) void benchmark(uint32_t m, uint32_t n, Unary::ptype_t ptype, const std::string& name, bool benchmark_mode) {
+// Frueher stand hier __attribute__((optimize("O0"))). Begruendung damals:
+// "Sonst speichert der Compiler die lokalen Variablen zur Zeitmessung in den
+// callee-saved Vector-Registern (d8-d15). Da smstart sm diese Register
+// hardwareseitig nullt, bekaemen wir sonst Divisionen durch Null und kaputte
+// Timer."
+//
+// Die Beobachtung war richtig, die Ursache lag aber nicht beim Compiler: Der
+// generierte Kernel verletzte die Aufrufkonvention, weil er d8-d15 zerstoerte,
+// ohne sie zu sichern. Der Compiler durfte sie zu Recht fuer die Zeitvariablen
+// nutzen.
+//
+// Die Optimierung abzuschalten war deshalb eine Umgehung mit zwei Nachteilen:
+// `optimize` ist ein GCC-Attribut (clang ignoriert es kommentarlos), und es
+// betrifft die GANZE Funktion -- also auch den Zeitmesscode selbst.
+//
+// Behoben ist es jetzt an der Wurzel: der Generator sichert d8-d15 im Prolog
+// und stellt sie im Epilog wieder her (siehe Unary.cpp). Damit ist das Attribut
+// ueberfluessig und die Benchmarks laufen wieder mit voller Optimierung.
+void benchmark(uint32_t m, uint32_t n, Unary::ptype_t ptype, const std::string& name, bool benchmark_mode) {
     Unary kernel_gen;
     if (kernel_gen.generate(m, n, 0, Unary::dtype_t::fp32, ptype) != Unary::error_t::success) {
         std::cout << name << " (" << m << "x" << n << "): Generation failed" << std::endl;
@@ -83,22 +97,18 @@ __attribute__((optimize("O0"))) void benchmark(uint32_t m, uint32_t n, Unary::pt
     double total_gib_per_sec = 0.0;
     
     for (int outer = 0; outer < outer_runs; ++outer) {
-// 1. Sicheren Wrapper definieren
+// Der Kernel wird ganz normal ueber den Funktionszeiger aufgerufen.
+//
+// Frueher stand hier ein Inline-Assembler-Wrapper mit einer Clobber-Liste. Er
+// war noetig, weil der erzeugte Kernel per `smstart` den Streaming-Modus betrat
+// und dabei die nach AAPCS64 callee-saved Register v8-v15 zerstoerte, ohne sie
+// zu sichern -- also die Aufrufkonvention verletzte.
+//
+// Statt das im Aufrufer zu umgehen, sichert der Generator diese Register jetzt
+// selbst (siehe Prolog/Epilog in Unary.cpp). Damit ist der Kernel ABI-konform
+// und ein gewoehnlicher Aufruf genuegt.
 auto safe_kernel = [&](const float* a, float* b, uint32_t arg_m, uint32_t arg_n) {
-    register const float* x0 asm("x0") = a;
-    register float* x1 asm("x1") = b;
-    register uint32_t x2 asm("x2") = arg_m;
-    register uint32_t x3 asm("x3") = arg_n;
-    register Unary::kernel_t x4 asm("x4") = kernel;
-
-    asm volatile(
-        "blr %4\n" // Rufe den Kernel auf
-        : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x3) // In/Out Argumente
-        : "r"(x4) // Funktionspointer
-        // Hier ist die Magie: Wir teilen dem Compiler mit, dass der Kernel
-        // die callee-saved Register v8-v15 unwiderruflich zerstört!
-        : "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "memory", "cc"
-    );
+    kernel(a, b, arg_m, arg_n);
 };
 
 // ... Cache anwärmen ...
@@ -146,23 +156,66 @@ using namespace mini_jit;
 
 // Unary code omitted for brevity right here, assuming the user knows we just append this
 
+// Aufruf des GEMM-Kernels.
+//
+// Anders als beim Unary-Kernel laesst sich die ABI-Verletzung hier nicht an der
+// Wurzel beheben: Der GEMM-Kernel ist ein fest einprogrammiertes
+// Instruktionsarray (Gemm.cpp), und sein Prolog sichert x19-x27, aber NICHT
+// d8-d15 -- die `smstart` zerstoert. Zusaetzliche stp/ldp-Instruktionen
+// einzufuegen wuerde die relativen Sprungziele innerhalb des Arrays
+// verschieben.
+//
+// Deshalb wird die Zerstoerung hier an der Aufrufstelle deklariert. Ohne das
+// legt der Compiler seine Zeitmessvariablen in d8-d15 ab, findet dort nach dem
+// Aufruf Nullen und rechnet mit einer Zeitdifferenz von 0 -- die Ausgabe lautet
+// dann "nan GFLOPS".
+static void call_gemm(Gemm::kernel_t kern,
+                      const float* a, const float* b, float* c,
+                      int64_t ld_a, int64_t ld_b, int64_t ld_c) {
+    register const float* x0 asm("x0") = a;
+    register const float* x1 asm("x1") = b;
+    register float*       x2 asm("x2") = c;
+    register int64_t      x3 asm("x3") = ld_a;
+    register int64_t      x4 asm("x4") = ld_b;
+    register int64_t      x5 asm("x5") = ld_c;
+    Gemm::kernel_t fn = kern;
+
+    asm volatile(
+        "blr %[fn]\n"
+        : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x3), "+r"(x4), "+r"(x5)
+        : [fn] "r"(fn)
+        : "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15",
+          "x16", "x17", "x18", "x30",
+          "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15",
+          "memory", "cc"
+    );
+}
+
 bool verify_gemm(uint32_t m, uint32_t n, uint32_t k) {
     if (m != 512 || n != 512 || k != 512) return true; // Only 512 implemented
 
-    std::vector<float> A(m * k, 1.0f);
-    std::vector<float> B(k * n, 1.0f);
+    std::vector<float> A(m * k);
+    std::vector<float> B(k * n);
     std::vector<float> C(m * n, 0.0f);
     std::vector<float> C_ref(m * n, 0.0f);
 
-    // Provide values
-    for(size_t i=0; i<A.size(); ++i) A[i] = 1.0f;
-    for(size_t i=0; i<B.size(); ++i) B[i] = 2.0f;
+    // GEMUSTERTE Werte statt Konstanten.
+    //
+    // Vorher standen hier A = 1.0 und B = 2.0. Damit liefert JEDE Vertauschung
+    // von Zeilen und Spalten dasselbe Ergebnis -- ein Layout-Fehler faellt nicht
+    // auf. Genau das ist hier passiert: die Referenz unten indizierte B
+    // spaltenweise (B[l + j*k]), waehrend der Kernel B laut Aufgabenstellung
+    // ZEILENWEISE liest. Die Pruefung bestand trotzdem.
+    // Teilerfremde Perioden, damit sich das Muster ueber A x B nicht frueh
+    // wiederholt.
+    for(size_t i=0; i<A.size(); ++i) A[i] = static_cast<float>((i % 13) + 1) / 13.0f;
+    for(size_t i=0; i<B.size(); ++i) B[i] = static_cast<float>((i %  7) + 1) /  7.0f;
 
-    // Standard matrix multiplication
+    // Referenz: A und C spaltenweise, B ZEILENWEISE (Layout laut Aufgabe).
     for(uint32_t j=0; j<n; ++j) {
         for(uint32_t l=0; l<k; ++l) {
             for(uint32_t i=0; i<m; ++i) {
-                C_ref[i + j*m] += A[i + l*m] * B[l + j*k];
+                C_ref[i + j*m] += A[i + l*m] * B[l*k + j];
             }
         }
     }
@@ -174,7 +227,7 @@ bool verify_gemm(uint32_t m, uint32_t n, uint32_t k) {
     if (!kernel) return false;
 
     // Call the generated JIT kernel
-    kernel(A.data(), B.data(), C.data(), m, k, m);
+    call_gemm(kernel, A.data(), B.data(), C.data(), m, k, m);
 
     // Verify
     for(size_t i=0; i<C.size(); ++i) {
@@ -183,7 +236,8 @@ bool verify_gemm(uint32_t m, uint32_t n, uint32_t k) {
     return true;
 }
 
-__attribute__((optimize("O0"))) __attribute__((optimize("O0"))) void benchmark_gemm(uint32_t m, uint32_t n, uint32_t k, bool benchmark_mode) {
+// Ebenfalls ohne __attribute__((optimize("O0"))) -- Begruendung siehe benchmark().
+void benchmark_gemm(uint32_t m, uint32_t n, uint32_t k, bool benchmark_mode) {
     Gemm kernel_gen;
     if (kernel_gen.generate(m, n, k, 0, 0, 0, Gemm::dtype_t::fp32) != Gemm::error_t::success) return;
     auto kernel = kernel_gen.get_kernel();
@@ -199,11 +253,11 @@ __attribute__((optimize("O0"))) __attribute__((optimize("O0"))) void benchmark_g
     
     for (int outer = 0; outer < outer_runs; ++outer) {
         // Cache anwärmen (Warmup)
-        for (int i = 0; i < 5; ++i) kernel(A.data(), B.data(), C.data(), m, k, m);
+        for (int i = 0; i < 5; ++i) call_gemm(kernel, A.data(), B.data(), C.data(), m, k, m);
 
         auto start = std::chrono::high_resolution_clock::now();
         for (int i = 0; i < num_runs; ++i) {
-            kernel(A.data(), B.data(), C.data(), m, k, m);
+            call_gemm(kernel, A.data(), B.data(), C.data(), m, k, m);
         }
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> diff = end - start;
