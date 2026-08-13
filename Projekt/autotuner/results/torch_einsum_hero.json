@@ -1,0 +1,12 @@
+{
+ "case": "ab-ac-cb",
+ "size": 512,
+ "torch_version": "2.13.0",
+ "threads": 16,
+ "date": "2026-08-13 14:32:53",
+ "method": "warmup 10, best of 5 blocks x 20 iters, GFLOPS = 2*N^3/t",
+ "gflops": {
+  "torch.einsum(ac,cb->ab)": 2301.04,
+  "torch.matmul(A,B)": 2568.45
+ }
+}
