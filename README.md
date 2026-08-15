@@ -64,8 +64,3 @@ Bei jedem Push auf `main` baut GitHub Actions die Doku und veröffentlicht sie
 auf GitHub Pages; zusätzlich laufen die CI-Workflows für den Autotuner
 (macOS arm64: Build ohne Warnungen, Unit-Tests, Rauchtest) und die Wochen
 (Cross-Compile + QEMU).
-
-## Hinweise zur Abgabe
-
-- Das Datum in Dateinamen muss immer im Format **YYYY.MM.DD** angegeben werden.
-- Die **Nachnamen der Teammitglieder** müssen ebenfalls im Dateinamen enthalten sein.
