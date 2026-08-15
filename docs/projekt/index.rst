@@ -1,11 +1,6 @@
 Projekt: TEIR-Autotuner
 =======================
 
-.. note::
-
-   **Entwurfsfassung.** Abschnitt 3 fehlt noch und wird gesondert ergänzt. Die
-   Hinweisblöcke sind vor der Abgabe zu entfernen.
-
 1. Einleitung
 -------------
 
@@ -20,11 +15,12 @@ ungleich lange Achsen zusammen (z. B. eine sehr kurze und eine sehr lange Achse)
 Deshalb benötigt man eine andere Schleifenanordnung.
 
 Wie groß der Unterschied ausfällt, zeigt ein Beispiel aus unserer eigenen Testsuite: Ein
-großer Fall der GETT-Matrix läuft mit der naiven Ausgangs-Schedule in einen von uns selbst 
-festgelegten Zeitdeckel von 240 Sekunden, während dieselbe Rechnung mit passender Schedule 
-in Sekunden fertig ist.
+großer Fall der GETT-Matrix, unserer 48 Kontraktionen umfassenden Testmenge nach dem
+Benchmark im Anhang von [SB18]_, läuft mit der naiven Ausgangs-Schedule in einen von uns
+selbst festgelegten Zeitdeckel von 240 Sekunden, während dieselbe Rechnung mit passender
+Schedule in Sekunden fertig ist.
 
-Diese Entscheidungen jedes mal von Hand zu treffen skaliert nicht. Für jede neue Tensorform
+Diese Entscheidungen jedes Mal von Hand zu treffen skaliert nicht. Für jede neue Tensorform
 müsste man erneut messen, welche Anordnung passt, und der Raum der Möglichkeiten ist
 groß: Eine Kontraktion mit sechs Achsen hat rund 28 800 Kandidaten, und die Zahl wächst
 faktoriell mit der Achsenzahl. Ein Autotuner nimmt diese Arbeit ab: Er erzeugt aus einer
@@ -282,9 +278,9 @@ beruhen.
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Ein einzelner Messwert sagt wenig darüber aus, wie stabil er ist. Um das zu
-quantifizieren, wurden die Kernel aus dem GETT-Paper von Springer und Bientinesi
-[SB18]_ je 15-mal gemessen und Median sowie Spannweite bestimmt. Das Ergebnis zeigt eine klare Abhängigkeit von der
-Problemgröße:
+quantifizieren, wurden die Unary- und GEMM-Kernel unserer Testsuite je 15-mal
+gemessen und Median sowie Spannweite bestimmt. Das Ergebnis zeigt eine klare
+Abhängigkeit von der Problemgröße:
 
 .. list-table::
    :header-rows: 1
@@ -436,33 +432,13 @@ Ausgangskonfiguration kein Strohmann ist, sondern bereits eine vernünftige Sche
 
 Als externer Bezugspunkt dient PyTorch: ``torch.matmul`` setzt auf Apples
 Accelerate-BLAS auf und ist damit die hand-optimierte Referenz für dichte
-Matrixmultiplikation auf dieser Maschine. Alle Werte stammen von derselben
-Maschine und demselben Fall, dem Hero-Fall ``ab-ac-cb`` bei 512³
-(``results/hero_sme.json``):
+Matrixmultiplikation auf dieser Maschine. Beide Werte stehen in der Tabelle in
+Abschnitt 5.1, gemessen auf derselben Maschine und demselben Fall: PyTorch
+erreicht 2370,9 GFLOPS, der getunte SME-Kernel 1428,3 und damit 60 Prozent.
 
-.. list-table::
-   :header-rows: 1
-   :widths: 60 40
-
-   * - Pfad
-     - GFLOPS
-   * - naiv (ungetunt, Scalar)
-     - 3,1
-   * - TEIR getunt, Scalar
-     - 2,3
-   * - TEIR getunt, NEON
-     - 35,2
-   * - TVM (MetaSchedule)
-     - 505,1
-   * - **TEIR getunt, SME**
-     - **1428,3**
-   * - PyTorch (``torch.matmul``, Accelerate)
-     - 2370,9
-
-Der getunte SME-Kernel erreicht damit 60 Prozent von PyTorch. Diese Zahl ist
-der Realitätsanker des Projekts: Auf der einen Seite steht eine über Jahre
-hand-optimierte Herstellerbibliothek, auf der anderen Code, den ein
-studentischer Autotuner selbst erzeugt und ausgewählt hat; beide nutzen die
+Diese Zahl ist der Realitätsanker des Projekts: Auf der einen Seite steht eine
+über Jahre hand-optimierte Herstellerbibliothek, auf der anderen Code, den ein
+selbst gebauter Autotuner erzeugt und ausgewählt hat; beide nutzen die
 Matrix-Einheit des M4. 60 Prozent dieser Referenz sind für generierten Code
 ein starkes Ergebnis.
 
@@ -718,11 +694,27 @@ Für dieses Projekt wurde ein KI-Assistent (Claude) eingesetzt. Die Nutzung umfa
 - **Fehlersuche und Analyse.** Eingrenzung der drei Fehler im SME-Backend, der
   Messschleife und der Validierung, jeweils mit Prüfung der Hypothesen am Code und an
   Messungen.
-- **Aufbereitung der Messdaten.** Skripte für die Messkampagnen, Berechnung von Median
-  und Spannweite, Erzeugung der Abbildungen.
 
-Nicht eingesetzt wurde der Assistent für die Erhebung der Messwerte selbst. Alle Zahlen
-stammen aus Läufen auf der Referenzmaschine und liegen als Rohdaten im Repository.
+- **Aufbereitung der Messdaten.** Skripte für die Messkampagnen, Berechnung von Median
+  und Spannweite.
+
+- **Sprachliches Korrektorat:** Einsatz von Claude ausschließlich zur
+  Überprüfung von Rechtschreibung, Grammatik und Zeichensetzung in ausgewählten
+  Abschnitten (unter anderem Fazit und PyTorch-Vergleich) bei vollständig selbst
+  verfassten Textentwürfen. 
+
+Alle Messwerte stammen aus realen Läufen auf der Referenzmaschine und liegen als
+Rohdaten im Repository; das gilt auch für Messungen, deren Skripte mit Assistenz
+entstanden sind (etwa ``eval/torch_einsum_hero.py``).
+
+Festzuhalten bleibt, dass der Assistent für dieses Projekt eine erhebliche
+Unterstützung war. Das agentische Arbeiten, bei dem er Code direkt im Repository
+schreibt, kommentiert, übersetzt und testet, hat vor allem das Finden und Beseitigen von Fehlern
+deutlich beschleunigt, weil sich Hypothesen unmittelbar am Code und an Messungen
+prüfen ließen. Ebenso wertvoll war er vor Projektbeginn als Einstieg: Sich ein
+breites Thema wie Autotuning zunächst erklären zu lassen und Rückfragen sofort
+klären zu können, hat den Überblick erheblich schneller verschafft, als es mit
+Literatur allein möglich gewesen wäre.
 
 Literatur
 ---------
