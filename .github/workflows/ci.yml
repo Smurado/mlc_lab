@@ -63,8 +63,9 @@ jobs:
           fi
 
       - name: Unit-Tests
-        # 7 Suiten: C2-Validator, Messschleife, OOM-Guard, Kernel-Validierung,
-        # Einsum, Parser, IR-Passes. Alle deterministisch, keine Messungen.
+        # 8 Suiten: C2-Validator, Messschleife, OOM-Guard, Kernel-Validierung,
+        # Einsum, Parser, IR-Passes, Cost-Modell. Alle deterministisch, keine
+        # Messungen (das Cost-Modell laeuft unkalibriert, TEIR_CALIBRATE=0).
         run: make -C Projekt/autotuner/src test
 
       - name: Rauchtest (Ende zu Ende)
