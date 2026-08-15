@@ -28,8 +28,12 @@ jobs:
           week="${dir%/}"
           if [[ -f "$week/main.cpp" && -f "$week/functions.s" ]]; then
             echo "::group::Build $week"
+            # Referenzimplementierungen unter data/ gehoeren mit in den Build
+            # (week1: data/base_math.cpp, siehe week1/Makefile). nullglob ist
+            # gesetzt, bei Wochen ohne data/-Quellen bleibt das Array leer.
+            extra=( "$week"/data/*.cpp )
             aarch64-linux-gnu-g++ -g -Wall -Wextra -Werror \
-              "$week/main.cpp" "$week/functions.s" -o "$week/test_run"
+              "$week/main.cpp" "${extra[@]}" "$week/functions.s" -o "$week/test_run"
             echo "::endgroup::"
 
             echo "::group::Test $week (Benchmarks werden in CI uebersprungen)"
