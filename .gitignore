@@ -107,3 +107,7 @@ Projekt/autotuner/results/**/_current.txt
 # Arbeitsanweisungen und interne Feedback-Aufarbeitung (keine Abgabe)
 CLAUDE.md
 feedback/
+
+# Lokale Arbeitsdateien (nicht Teil der Abgabe)
+.claude/
+Roadmap*.md
