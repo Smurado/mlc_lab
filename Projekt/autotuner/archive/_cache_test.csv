@@ -1,2 +1,0 @@
-name,tensors,axes,primitives,schedule,invokes,einsum
-contraction_gemm,"in0:f32;in1:f32;out:f32","a:64;b:64;c:64","zero;gemm","a:sequential;b:sequential;c:sequential","zero;gemm","ab-ac-cb"

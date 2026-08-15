@@ -1,2 +1,0 @@
-=== SA vs Random @ abc-bda-dc(64), MAX_TRIALS=25, Seeds 1-4 ===
-seed   SA           Random      
