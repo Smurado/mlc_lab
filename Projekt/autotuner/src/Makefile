@@ -33,7 +33,8 @@ $(TARGET): $(OBJS)
 #   einsum: Einstein-Notation -- Zerlegung, gesplittete Achsen, Strides, isGEMMForm.
 #   parser: CSV -> IR (Eingangspunkt), inkl. Quotes und Fehlerfaelle.
 #   passes: IR-Transformationen -- Split, Reorder, Parallelisierung.
-test: test-c2 test-bench test-guard test-valid test-einsum test-parser test-passes
+#   cost:   Cost-Modell -- Kalibrierungs-Defaults, Schaetz-Invarianten, Breakdown.
+test: test-c2 test-bench test-guard test-valid test-einsum test-parser test-passes test-cost
 
 test-c2: einsum.o
 	@$(CXX) $(CXXFLAGS) test_c2_validator.cpp einsum.o -o _test_c2
@@ -63,8 +64,12 @@ test-passes: passes.o
 	@$(CXX) $(CXXFLAGS) test_passes.cpp passes.o -o _test_passes
 	@./_test_passes
 
+test-cost: cost_model.o einsum.o
+	@$(CXX) $(CXXFLAGS) test_cost_model.cpp cost_model.o einsum.o -o _test_cost $(LDFLAGS)
+	@./_test_cost
+
 clean:
 	@echo "Cleaning up..."
-	@rm -f $(OBJS) $(TARGET) results.csv autotuner_results.csv generated_kernel.cpp generated_kernel.so _trial_*.cpp _trial_*.so _test_c2 _test_bench _test_guard _test_valid _test_einsum _test_parser _test_passes
+	@rm -f $(OBJS) $(TARGET) results.csv autotuner_results.csv generated_kernel.cpp generated_kernel.so _trial_*.cpp _trial_*.so _test_c2 _test_bench _test_guard _test_valid _test_einsum _test_parser _test_passes _test_cost
 
-.PHONY: all clean test test-c2 test-bench test-guard test-valid test-einsum test-parser test-passes
+.PHONY: all clean test test-c2 test-bench test-guard test-valid test-einsum test-parser test-passes test-cost

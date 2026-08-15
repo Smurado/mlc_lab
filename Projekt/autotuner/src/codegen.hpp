@@ -1,3 +1,6 @@
+// Uebersetzt die transformierte TEIR in kompilierbaren C++-Quelltext.
+// Backend-Wahl (Scalar/NEON/SME) steckt in der IR; das Ergebnis wird von
+// main.cpp bzw. benchmark.cpp mit dem Systemcompiler zur .so gebaut.
 #pragma once
 #include "teir.hpp"
 #include <string>

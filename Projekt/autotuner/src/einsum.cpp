@@ -1,3 +1,7 @@
+// Einstein-Notation: Parsing, Stride-/Extent-Arithmetik, naive Referenz und
+// die C2-Stichproben-Validierung. Alles hier ist bewusst einfach gehalten --
+// dieser Code ist der Massstab, an dem die generierten Kernel gemessen werden,
+// und darf deshalb selbst keine trickreiche Optimierung enthalten.
 #include "einsum.hpp"
 
 #include <algorithm>

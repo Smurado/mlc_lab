@@ -1,3 +1,7 @@
+// TEIR -> C++-Quelltext. Ein Kernel pro Aufruf, drei Backends: Scalar
+// (Autovektorisierung + OpenMP), NEON (4x4-Outer-Product-GEMM) und SME
+// (smstart/fmopa/smstop). Die SME-Fallstricke (Kachelrichtung, Clobber,
+// Register d8-d15) sind im Bericht, Abschnitt 5.1, dokumentiert.
 #include "codegen.hpp"
 #include "einsum.hpp"
 #include <fstream>

@@ -1,3 +1,6 @@
+// Such-Messung der Trials: JIT-Kompilierung des Kandidaten, Validierung,
+// Zeitmessung ueber die gemeinsame Messschleife (bench_loop.hpp) und der
+// optionale prozessuebergreifende Kernel-Cache.
 #include "benchmark.hpp"
 #include "bench_loop.hpp"
 #include "kernel_validation.hpp"

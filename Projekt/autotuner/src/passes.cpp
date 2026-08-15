@@ -1,3 +1,6 @@
+// Implementierung der drei Schedule-Transformationen (siehe passes.hpp).
+// Invariante aller Passes: Achsen-Extents und Berechnung bleiben unberuehrt,
+// nur die Ausfuehrungsreihenfolge aendert sich (abgesichert in test_passes.cpp).
 #include "passes.hpp"
 #include <algorithm>
 #include <stdexcept>

@@ -1,3 +1,6 @@
+// Die drei Schedule-Transformationen, aus denen jede TuningConfig entsteht:
+// Achse kacheln (a -> a0/a1), Schleifen umordnen, eine Achse parallelisieren.
+// Sie veraendern nur die Ausfuehrung, nie das Ergebnis (siehe Bericht, Kap. 3).
 #pragma once
 #include "teir.hpp"
 #include <string>

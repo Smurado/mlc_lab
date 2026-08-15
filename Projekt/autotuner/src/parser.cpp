@@ -1,3 +1,5 @@
+// CSV -> TEIR. Bewusst tolerant gegenueber Anfuehrungszeichen und CRLF,
+// streng bei allem, was die Rechnung verfaelschen wuerde (test_parser.cpp).
 #include "parser.hpp"
 
 #include <fstream>

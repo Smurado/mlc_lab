@@ -1,3 +1,7 @@
+// Ablaufsteuerung des Autotuners: CSV laden, Optionen aus der Umgebung lesen,
+// Suche starten, das Optimum anwenden, den finalen Kernel per JIT bauen und
+// gegen die Referenz validieren. Die [PERFORMANCE]-Zeile am Ende ist die
+// Endmessung, auf der alle Auswertungen beruhen.
 #include "teir.hpp"
 #include "parser.hpp"
 #include "autotuner.hpp"
@@ -14,11 +18,93 @@
 #include <chrono>
 #include <iostream>
 #include <vector>
-#include <algorithm>
 #include <dlfcn.h>
 
-int main()
+// Numerische Env-Variablen mit verstaendlicher Fehlermeldung parsen. std::stod
+// alleine wirft bei TEIR_MAX_TRIALS=abc nur "stoi: no conversion" -- daraus geht
+// nicht hervor, welche Variable falsch gesetzt war.
+static double envToDouble(const char* name, const char* value)
 {
+    try
+    {
+        size_t used = 0;
+        double d = std::stod(value, &used);
+        if (used != std::string(value).size())
+            throw std::invalid_argument("");
+        return d;
+    }
+    catch (const std::exception&)
+    {
+        throw std::runtime_error(std::string(name) + ": ungueltiger Wert '" +
+                                 value + "' (Zahl erwartet)");
+    }
+}
+
+static int envToInt(const char* name, const char* value)
+{
+    double d = envToDouble(name, value);
+    if (d != (int)d)
+        throw std::runtime_error(std::string(name) + ": ungueltiger Wert '" +
+                                 value + "' (Ganzzahl erwartet)");
+    return (int)d;
+}
+
+static void printHelp()
+{
+    std::cout <<
+        "TEIR-Autotuner: tunt die Kontraktion aus der Eingabe-CSV per JIT-Suche.\n"
+        "Aufruf: teir_compiler [--help]\n"
+        "Konfiguration ueber Umgebungsvariablen (Default in Klammern):\n"
+        "\n"
+        "Eingabe und Ablauf\n"
+        "  TEIR_INPUT            Pfad zur Eingabe-CSV (input.csv)\n"
+        "  TEIR_BACKEND          Codegen-Backend: scalar | neon | sme (scalar)\n"
+        "  TEIR_NO_AUTOTUNE      1 = Default-Schedule nur messen, keine Suche (aus)\n"
+        "\n"
+        "Suche\n"
+        "  TEIR_STRATEGY         sa | ga | random (sa)\n"
+        "  TEIR_MAX_TRIALS       max. Anzahl JIT-Trials, 0 = kein Limit (0)\n"
+        "  TEIR_TIME_BUDGET_MS   hartes Zeitlimit der Suche in ms (60000)\n"
+        "  TEIR_SEED             Seed fuer reproduzierbare Laeufe (42)\n"
+        "  TEIR_WARMSTART        0 = Suche startet zufaellig statt am\n"
+        "                        Cost-Modell-Optimum (an)\n"
+        "  TEIR_COST_FILTER      Anteil der Kandidaten, der nach Cost-Modell\n"
+        "                        gemessen wird; ausserhalb (0,1) = Filter aus (0.3)\n"
+        "  TEIR_GA_REMUTATE_TRIES  GA: Mutationsversuche gegen Duplikate (3)\n"
+        "  TEIR_SEARCH_OPT       Compiler-Flags der Such-JITs, z. B. -O2 (-O3)\n"
+        "  TEIR_CALIBRATE        0 = Cost-Modell-Kalibrierung ueberspringen (an)\n"
+        "\n"
+        "Messung und Validierung\n"
+        "  TEIR_BENCH_ADAPTIVE   1 = adaptive Blockgroesse der Messschleife (aus)\n"
+        "  TEIR_BENCH_REPEATS    Wiederholungen der Such-Messung (3)\n"
+        "  TEIR_BENCH_MIN_MS     Mindest-Messfenster in ms (50)\n"
+        "  TEIR_BENCH_CAP_MS     Zeitdeckel je Messung in ms (1000)\n"
+        "  TEIR_MAX_TENSOR       OOM-Grenze in Tensor-Elementen (1e8)\n"
+        "  TEIR_VALIDATE_SAMPLES Stichprobengroesse der Validierung (64)\n"
+        "\n"
+        "Kernel-Cache und Logs\n"
+        "  TEIR_PERSIST_CACHE    1 = uebersetzte Kernel prozessuebergreifend cachen (aus)\n"
+        "  TEIR_CACHE_DIR        Ablageort des Caches (.teir_cache)\n"
+        "  TEIR_CACHE_TRUST_TIMINGS  1 = gecachten Timings vertrauen statt\n"
+        "                        neu zu messen (aus)\n"
+        "  TEIR_TRIAL_LOG        Pfad fuer das Trial-Log der Konvergenzanalyse (aus)\n";
+}
+
+int main(int argc, char* argv[])
+{
+    if (argc > 1)
+    {
+        const std::string arg = argv[1];
+        if (arg == "--help" || arg == "-h")
+        {
+            printHelp();
+            return 0;
+        }
+        std::cerr << "[ERROR] Unbekanntes Argument '" << arg
+                  << "'. Konfiguration laeuft ueber Umgebungsvariablen, siehe --help.\n";
+        return 1;
+    }
+
     try
     {
         // stdout sofort flushen (kein Block-Buffering bei Umleitung in Datei/Pipe),
@@ -64,19 +150,26 @@ int main()
                 opts.strategy = SearchStrategy::SIMULATED_ANNEALING;
             else if (s == "ga" || s == "GA" || s == "genetic")
                 opts.strategy = SearchStrategy::GENETIC;
+            else
+                std::cout << "[WARN] TEIR_STRATEGY='" << s << "' unbekannt "
+                          << "(gueltig: sa, ga, random) -- nutze Default sa.\n";
         }
 
         if (const char* envBudget = std::getenv("TEIR_TIME_BUDGET_MS"))
         {
-            opts.timeBudgetMs = std::stod(envBudget);
+            opts.timeBudgetMs = envToDouble("TEIR_TIME_BUDGET_MS", envBudget);
+            if (opts.timeBudgetMs <= 0)
+                throw std::runtime_error("TEIR_TIME_BUDGET_MS muss positiv sein");
         }
         if (const char* envMaxTrials = std::getenv("TEIR_MAX_TRIALS"))
         {
-            opts.maxTrials = std::stoi(envMaxTrials);
+            opts.maxTrials = envToInt("TEIR_MAX_TRIALS", envMaxTrials);
+            if (opts.maxTrials < 0)
+                throw std::runtime_error("TEIR_MAX_TRIALS darf nicht negativ sein (0 = kein Limit)");
         }
         if (const char* envSeed = std::getenv("TEIR_SEED"))
         {
-            opts.seed = static_cast<unsigned>(std::stoul(envSeed));
+            opts.seed = static_cast<unsigned>(envToInt("TEIR_SEED", envSeed));
         }
         if (const char* envWarm = std::getenv("TEIR_WARMSTART"))
         {
@@ -85,11 +178,16 @@ int main()
         }
         if (const char* envCostFilter = std::getenv("TEIR_COST_FILTER"))
         {
-            opts.costModelFilterPct = std::stod(envCostFilter);
+            opts.costModelFilterPct = envToDouble("TEIR_COST_FILTER", envCostFilter);
+            // Werte ausserhalb (0,1) schalten den Vorfilter ab (autotuner.cpp
+            // prueft 0 < pct < 1). Absichtlich erlaubt, aber sichtbar machen.
+            if (opts.costModelFilterPct <= 0 || opts.costModelFilterPct >= 1)
+                std::cout << "[WARN] TEIR_COST_FILTER=" << opts.costModelFilterPct
+                          << " liegt ausserhalb (0,1) -- Vorfilter ist damit aus.\n";
         }
         if (const char* envGaRemut = std::getenv("TEIR_GA_REMUTATE_TRIES"))
         {
-            opts.gaRemutateTries = std::stoi(envGaRemut);
+            opts.gaRemutateTries = envToInt("TEIR_GA_REMUTATE_TRIES", envGaRemut);
         }
         // Backend-Auswahl: scalar (Default), neon oder sme
         if (const char* envBackend = std::getenv("TEIR_BACKEND"))
@@ -100,6 +198,9 @@ int main()
                 opts.backend = Backend::SME;
             else if (b == "neon" || b == "NEON")
                 opts.backend = Backend::NEON;
+            else if (b != "scalar" && b != "SCALAR")
+                std::cout << "[WARN] TEIR_BACKEND='" << b << "' unbekannt "
+                          << "(gueltig: scalar, neon, sme) -- nutze Default scalar.\n";
         }
 
         //------------------------------------------------------
@@ -358,6 +459,8 @@ int main()
         else
         {
             std::cout << "[FAILED] Validation failed.\n";
+            dlclose(handle);
+            return 1; // fuer Skripte: fehlgeschlagene Validierung != Erfolg
         }
 
         dlclose(handle);

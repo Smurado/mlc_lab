@@ -1,3 +1,7 @@
+// Analytisches Cost-Modell: schaetzt Kandidaten-Kosten aus Zugriffsmuster,
+// Parallelisierung, Arbeitssatz und Unrolling. Kalibriert sich einmalig auf
+// der Zielmaschine (TEIR_CALIBRATE=0 schaltet das ab). Bewertung der
+// Modellguete: Bericht, Abschnitt 5.3; Invarianten: test_cost_model.cpp.
 #include "cost_model.hpp"
 #include "einsum.hpp"
 #include <algorithm>

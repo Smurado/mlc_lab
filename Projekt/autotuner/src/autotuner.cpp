@@ -1,3 +1,7 @@
+// Suchraum-Aufbau und die drei Strategien (Random, SA, GA) samt Vorfilter
+// und Warmstart aus dem Cost-Modell. Gemeinsamer Kern: dieselbe Trial-
+// Schleife, dieselben Messungen -- die Strategien unterscheiden sich nur
+// darin, welchen Kandidaten sie als naechstes vorschlagen.
 #include "autotuner.hpp"
 #include "passes.hpp"
 #include "benchmark.hpp"
