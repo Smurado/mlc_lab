@@ -45,11 +45,13 @@ ax.grid(alpha=0.3)
 ax.legend(loc="lower right")
 ax.set_xlim(1, min(len(r) for s in runs.values() for r in s))
 ax.set_xticks(range(2, 21, 2))   # Trials sind ganzzahlig
-ax.set_ylim(bottom=0)
+ax.set_ylim(0, 47)               # Luft nach oben fuer die Warmstart-Notiz
 
-# Der Warmstart ist die Kernaussage: SA und GA liegen ab Trial 1 oben.
+# Der Warmstart ist die Kernaussage: SA und GA liegen ab Trial 1 oben. Text
+# und Pfeil liegen oberhalb der Kurven, damit sie keine Linie kreuzen.
 ax.annotate("Warmstart: SA und GA starten\nbereits am Cost-Modell-Optimum",
-            xy=(1.2, 39.5), xytext=(4.5, 22), fontsize=9, color="#333333",
+            xy=(1.4, 40.8), xytext=(2.6, 44), fontsize=10.5, color="#333333",
+            va="center",
             arrowprops={"arrowstyle": "->", "color": "#333333", "lw": 1})
 
 fig.tight_layout()
